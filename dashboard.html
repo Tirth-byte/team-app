@@ -1,0 +1,2313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hackathon Dashboard</title>
+<meta name="description" content="Manage hackathon contacts, send bulk emails and WhatsApp messages, track registration status.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- Firebase (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset ───────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Variables ───────────────────────────────── */
+:root{
+  --bg:#0f1117;
+  --surface:#181c27;
+  --surface2:#1e2335;
+  --border:#2a2f45;
+  --text:#e8ecf4;
+  --muted:#7b82a0;
+  --accent:#4f8ef7;
+  --green:#3dd68c;
+  --orange:#f97316;
+  --danger:#ef4444;
+  --wa:#25d366;
+  --radius:8px;
+  --radius-sm:6px;
+  --transition:180ms ease;
+}
+
+body{
+  font-family:'DM Sans',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.5;
+  min-height:100vh;
+}
+
+/* ── Scrollbar ───────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+/* ── Layout ──────────────────────────────────── */
+.container{max-width:1440px;margin:0 auto;padding:0 24px 40px}
+
+/* ── Gradient Top Bar ────────────────────────── */
+.gradient-bar{
+  height:3px;
+  background:linear-gradient(90deg,#4f8ef7,#3dd68c);
+  position:sticky;top:0;z-index:52;
+}
+
+/* ── Header ──────────────────────────────────── */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;border-bottom:1px solid var(--border);
+  position:sticky;top:3px;z-index:50;
+  background:rgba(15,17,23,.92);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+}
+.header-title{display:flex;align-items:center;gap:10px}
+.header-title h1{font-size:1.25rem;font-weight:600;letter-spacing:-.02em}
+.header-title h1 .t-muted{color:var(--muted);font-weight:400}
+.header-title h1 .t-bold{color:#fff;font-weight:600}
+.pulse-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--green);
+  position:relative;flex-shrink:0;
+}
+.pulse-dot::after{
+  content:'';position:absolute;inset:-3px;border-radius:50%;
+  background:var(--green);opacity:.4;
+  animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.8);opacity:0}}
+
+.header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn-icon{
+  width:36px;height:36px;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;border-radius:var(--radius-sm);
+  background:transparent;border:1px solid transparent;
+  color:var(--muted);cursor:pointer;font-family:inherit;
+  transition:all var(--transition);
+}
+.btn-icon:hover{background:var(--surface);border-color:var(--border);color:var(--text)}
+
+/* ── Buttons ─────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:var(--radius-sm);
+  font-family:inherit;font-size:.8125rem;font-weight:500;
+  cursor:pointer;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);
+  transition:background var(--transition),border-color var(--transition),opacity var(--transition),box-shadow var(--transition);
+  white-space:nowrap;
+}
+.btn:hover{background:var(--surface2);border-color:var(--muted)}
+.btn-danger{border-color:var(--danger);color:var(--danger)}
+.btn-danger:hover{background:rgba(239,68,68,.12)}
+.btn-green{
+  background:linear-gradient(135deg,#34d399,#22c55e);
+  border-color:transparent;color:#fff;
+  padding:9px 20px;font-weight:600;font-size:.8125rem;
+  letter-spacing:.01em;
+  box-shadow:0 2px 8px rgba(34,197,94,.25);
+  position:relative;overflow:hidden;
+}
+.btn-green::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.18),transparent 60%);
+  opacity:0;transition:opacity 200ms ease;
+}
+.btn-green:hover{background:linear-gradient(135deg,#4ade80,#22c55e);box-shadow:0 4px 16px rgba(34,197,94,.35)}
+.btn-green:hover::before{opacity:1}
+.btn-green:active{transform:scale(.97);box-shadow:0 1px 4px rgba(34,197,94,.3)}
+.btn-green svg{flex-shrink:0}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface);border-color:var(--border);color:var(--text)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover{opacity:.88}
+.btn-sm{padding:5px 10px;font-size:.75rem}
+
+/* Bulk email glow */
+.btn-green.has-pending{
+  animation:glowPulse 2.4s ease-in-out infinite;
+}
+@keyframes glowPulse{
+  0%,100%{box-shadow:0 2px 8px rgba(34,197,94,.25)}
+  50%{box-shadow:0 0 24px 8px rgba(34,197,94,.35),0 0 48px 16px rgba(34,197,94,.1)}
+}
+
+/* Hidden original buttons (still in DOM for JS) */
+.hidden-btn{display:none!important}
+
+/* ── Settings Drawer ─────────────────────────── */
+.drawer-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(4px);
+  opacity:0;pointer-events:none;
+  transition:opacity 280ms ease;
+}
+.drawer-overlay.visible{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:320px;z-index:201;
+  background:var(--surface);border-left:1px solid var(--border);
+  transform:translateX(320px);
+  transition:transform 320ms cubic-bezier(.22,1,.36,1);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.drawer-overlay.visible .drawer{transform:translateX(0)}
+.drawer-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 20px 16px;border-bottom:1px solid var(--border);
+}
+.drawer-head h2{font-size:1rem;font-weight:600}
+.drawer-close{
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  border:none;background:transparent;color:var(--muted);cursor:pointer;
+  border-radius:var(--radius-sm);font-size:1.1rem;
+  transition:all var(--transition);
+}
+.drawer-close:hover{background:var(--surface2);color:var(--text)}
+.drawer-section{padding:20px}
+.drawer-section-title{
+  font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);margin-bottom:12px;font-weight:500;
+}
+.drawer-btn{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:10px 14px;border-radius:var(--radius-sm);
+  font-family:inherit;font-size:.8125rem;font-weight:500;
+  cursor:pointer;border:1px solid transparent;
+  background:transparent;color:var(--text);
+  transition:all var(--transition);text-align:left;
+}
+.drawer-btn:hover{background:var(--surface2);border-color:var(--border)}
+.drawer-btn-orange{color:var(--orange)}
+.drawer-btn-orange:hover{background:rgba(249,115,22,.08)}
+.drawer-btn-danger{color:var(--danger);border-color:rgba(239,68,68,.2)}
+.drawer-btn-danger:hover{background:rgba(239,68,68,.1);border-color:var(--danger)}
+.drawer-divider{height:1px;background:var(--border);margin:8px 0}
+.drawer-about{
+  padding:20px;margin-top:auto;border-top:1px solid var(--border);
+}
+.drawer-about p{font-size:.78rem;color:var(--muted);line-height:1.6}
+.drawer-about p:first-child{font-weight:500;color:var(--text);margin-bottom:4px}
+
+/* ── Stats ───────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:18px 20px;
+  position:relative;overflow:hidden;
+  transition:transform 250ms ease,box-shadow 250ms ease;
+  animation:fadeUp 500ms ease both;
+}
+.stat-card:nth-child(1){animation-delay:0ms;border-left:3px solid var(--accent)}
+.stat-card:nth-child(2){animation-delay:80ms;border-left:3px solid var(--green)}
+.stat-card:nth-child(3){animation-delay:160ms;border-left:3px solid var(--orange)}
+.stat-card:nth-child(4){animation-delay:240ms;border-left:3px solid var(--wa)}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.stat-bg-icon{
+  position:absolute;top:8px;right:12px;font-size:3rem;
+  opacity:.05;pointer-events:none;line-height:1;
+}
+.stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;font-weight:500}
+.stat-value{font-size:2rem;font-weight:600}
+.stat-value .sep{color:var(--muted);font-weight:400;margin:0 4px;font-size:1rem}
+.stat-blue{color:var(--accent)}
+.stat-green{color:var(--green)}
+.stat-orange{color:var(--orange)}
+.stat-sub{font-size:.72rem;color:var(--muted);margin-top:4px}
+.stat-progress{
+  position:absolute;bottom:0;left:0;right:0;height:4px;
+  background:rgba(255,255,255,.04);
+}
+.stat-progress-fill{
+  height:100%;border-radius:0 2px 2px 0;
+  transition:width 600ms ease;
+}
+
+/* ── Collapsible Templates ───────────────────── */
+.templates-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);margin-top:20px;overflow:hidden;
+}
+.templates-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;cursor:pointer;user-select:none;
+  transition:background var(--transition);
+}
+.templates-header:hover{background:var(--surface2)}
+.templates-header h2{font-size:.9375rem;font-weight:500}
+.templates-chevron{
+  transition:transform 250ms ease;font-size:.8rem;color:var(--muted);
+}
+.templates-card.open .templates-chevron{transform:rotate(180deg)}
+.templates-body{
+  max-height:0;overflow:hidden;
+  transition:max-height 350ms ease,padding 250ms ease;
+}
+.templates-card.open .templates-body{
+  max-height:600px;padding:0 20px 20px;
+}
+.templates-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.tpl-label{font-size:.8125rem;color:var(--muted);margin-bottom:6px;display:block}
+.tpl-char{font-size:.7rem;color:var(--muted);margin-top:4px;text-align:right}
+
+/* ── Inputs ──────────────────────────────────── */
+input[type="text"],textarea,select{
+  width:100%;font-family:inherit;font-size:.8125rem;
+  padding:9px 12px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg);color:var(--text);
+  outline:none;transition:border-color var(--transition);
+  height:36px;
+}
+input[type="text"]:focus,textarea:focus,select:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:100px;line-height:1.55;height:auto}
+select{cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237b82a0' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;
+}
+
+/* ── Toolbar ─────────────────────────────────── */
+.toolbar{
+  display:flex;align-items:center;gap:10px;margin-top:20px;flex-wrap:wrap;
+}
+.search-wrap{
+  position:relative;flex:1;min-width:200px;
+}
+.search-wrap input[type="text"]{padding-left:36px;width:100%}
+.search-icon{
+  position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:var(--muted);pointer-events:none;display:flex;
+}
+.toolbar select{width:auto;min-width:130px;flex:none}
+
+/* ── Table ───────────────────────────────────── */
+.table-wrap{
+  margin-top:16px;border:1px solid var(--border);
+  border-top:2px solid var(--accent);
+  border-radius:var(--radius);overflow:auto;
+  background:var(--surface);
+  animation:fadeUp 500ms ease 300ms both;
+}
+table{width:100%;border-collapse:collapse;font-size:.8125rem}
+thead{position:sticky;top:0;z-index:5}
+th{
+  background:var(--surface2);color:var(--muted);font-weight:500;
+  text-align:left;padding:10px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--border);font-size:.7rem;
+  text-transform:uppercase;letter-spacing:.07em;
+}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:rgba(30,35,53,.45)}
+tbody tr{border-left:3px solid transparent;transition:border-color var(--transition),background var(--transition)}
+tbody tr:hover{background:rgba(79,142,247,.06);border-left-color:var(--accent)}
+.col-name{font-weight:500}
+.col-email{font-family:'DM Mono',monospace;color:var(--muted);font-size:.78rem}
+.col-mobile{font-family:'DM Mono',monospace;font-size:.78rem}
+.col-team{color:var(--accent);font-weight:500}
+.badge{
+  display:inline-block;padding:4px 12px;border-radius:20px;
+  font-size:.73rem;font-weight:500;white-space:nowrap;
+}
+.badge-green{background:rgba(61,214,140,.12);color:var(--green)}
+.badge-orange{background:rgba(249,115,22,.12);color:var(--orange)}
+.badge-blue{background:rgba(79,142,247,.12);color:var(--accent)}
+.badge-muted{background:rgba(123,130,160,.1);color:var(--muted)}
+.wa-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 12px;border-radius:var(--radius-sm);font-size:.75rem;
+  font-weight:500;cursor:pointer;border:1px solid var(--wa);
+  background:rgba(37,211,102,.1);color:var(--wa);
+  font-family:inherit;transition:background var(--transition);
+}
+.wa-btn:hover{background:rgba(37,211,102,.22)}
+.wa-btn svg{flex-shrink:0}
+
+/* ── Pagination ──────────────────────────────── */
+.pagination{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:4px;padding:14px 16px;border-top:1px solid var(--border);
+}
+.pagination-left{font-size:.75rem;color:var(--muted);white-space:nowrap}
+.pagination-right{display:flex;align-items:center;gap:4px}
+.page-btn{
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;font-size:.8125rem;font-weight:500;
+  cursor:pointer;border:1px solid transparent;background:transparent;
+  color:var(--muted);font-family:inherit;
+  transition:all var(--transition);
+}
+.page-btn:hover{background:var(--surface2);color:var(--text)}
+.page-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.page-btn:disabled{opacity:.3;cursor:default}
+.page-btn.nav-btn{border-radius:var(--radius-sm);width:auto;padding:0 10px;font-size:.78rem}
+.page-info{font-size:.75rem;color:var(--muted);margin:0 4px}
+
+/* ── Modal ───────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:300;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity 200ms ease;
+}
+.modal-overlay.visible{opacity:1;pointer-events:auto}
+.modal{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:0;width:100%;max-width:460px;
+  transform:translateY(12px) scale(.97);
+  transition:transform 250ms ease;
+  overflow:hidden;
+}
+.modal-overlay.visible .modal{transform:translateY(0) scale(1)}
+.modal-top-bar{height:3px;width:100%;background:var(--accent)}
+.modal-top-bar.bar-red{background:var(--danger)}
+.modal-top-bar.bar-green{background:var(--green)}
+.modal-inner{padding:28px}
+.modal-emoji{font-size:2rem;text-align:center;margin-bottom:12px}
+.modal h3{font-size:1.05rem;font-weight:600;margin-bottom:10px;text-align:center}
+.modal p{font-size:.875rem;color:var(--muted);line-height:1.6;margin-bottom:20px;text-align:center}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end}
+
+/* ── Toast ───────────────────────────────────── */
+.toast-container{
+  position:fixed;bottom:20px;right:20px;z-index:400;
+  display:flex;flex-direction:column-reverse;gap:8px;
+}
+.toast{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 18px 16px;
+  font-size:.8125rem;max-width:400px;
+  animation:toastIn 300ms ease forwards;
+  border-left:4px solid var(--border);
+  position:relative;overflow:hidden;
+}
+.toast.success{border-left-color:var(--green);color:var(--green)}
+.toast.error{border-left-color:var(--danger);color:var(--danger)}
+.toast.info{border-left-color:var(--accent);color:var(--accent)}
+.toast.removing{animation:toastOut 250ms ease forwards}
+.toast-progress{
+  position:absolute;bottom:0;left:0;height:2px;
+  background:currentColor;opacity:.3;
+  animation:toastShrink 3s linear forwards;
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(12px)}}
+@keyframes toastShrink{from{width:100%}to{width:0%}}
+
+/* ── Empty state ─────────────────────────────── */
+.empty-state{
+  text-align:center;padding:72px 20px;color:var(--muted);
+}
+.empty-state .empty-icon{
+  font-size:3.5rem;margin-bottom:16px;display:block;
+  opacity:.6;
+}
+.empty-state .empty-title{
+  font-size:1.1rem;font-weight:600;color:var(--text);margin-bottom:6px;
+}
+.empty-state .empty-sub{
+  font-size:.85rem;margin-bottom:20px;color:var(--muted);
+}
+.empty-actions{display:flex;gap:10px;justify-content:center}
+
+/* ── Animations ──────────────────────────────── */
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(16px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media(max-width:900px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .templates-grid{grid-template-columns:1fr}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .toolbar select{width:100%}
+  .search-wrap{min-width:unset}
+  .header{flex-direction:column;gap:12px;align-items:flex-start}
+  .header-actions{width:100%;justify-content:flex-start}
+}
+@media(max-width:600px){
+  .stats{grid-template-columns:1fr}
+  .container{padding:0 12px 32px}
+  .drawer{width:100%}
+}
+
+/* ═══════════════════════════════════════════════
+   SCREEN SYSTEM
+   ═══════════════════════════════════════════════ */
+.screen{display:none}
+#loginScreen{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;background:var(--bg);
+  padding:24px;
+}
+
+/* ── Login Screen ───────────────────────────── */
+.login-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:40px 36px;width:100%;max-width:400px;
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+  animation:fadeUp 500ms ease both;
+}
+.login-logo{
+  font-size:2.5rem;text-align:center;margin-bottom:8px;
+  filter:drop-shadow(0 4px 12px rgba(79,142,247,.3));
+}
+.login-card h2{
+  text-align:center;font-size:1.35rem;font-weight:600;
+  margin-bottom:4px;letter-spacing:-.02em;
+}
+.login-sub{
+  text-align:center;font-size:.85rem;color:var(--muted);
+  margin-bottom:28px;
+}
+.login-field{margin-bottom:16px}
+.login-field label{
+  display:block;font-size:.78rem;color:var(--muted);
+  margin-bottom:6px;font-weight:500;letter-spacing:.03em;
+  text-transform:uppercase;
+}
+.login-field input{
+  width:100%;font-family:inherit;font-size:.875rem;
+  padding:11px 14px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg);color:var(--text);
+  outline:none;transition:border-color var(--transition),box-shadow var(--transition);
+  height:auto;
+}
+.login-field input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(79,142,247,.15);
+}
+.login-btn{
+  width:100%;padding:12px;margin-top:8px;border:none;
+  border-radius:var(--radius);cursor:pointer;
+  font-family:inherit;font-size:.9rem;font-weight:600;
+  background:linear-gradient(135deg,var(--accent),#6c63ff);color:#fff;
+  transition:opacity var(--transition),transform var(--transition),box-shadow var(--transition);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 4px 16px rgba(79,142,247,.3);
+}
+.login-btn:hover{opacity:.92;box-shadow:0 6px 24px rgba(79,142,247,.4)}
+.login-btn:active{transform:scale(.98)}
+.login-btn:disabled{opacity:.6;cursor:not-allowed}
+.login-error{
+  color:var(--danger);font-size:.8125rem;text-align:center;
+  margin-top:14px;min-height:20px;
+}
+
+/* ── Login Mode Toggle ───────────────────────── */
+.login-toggle{
+  display:flex;gap:4px;margin-bottom:20px;
+  padding:4px;background:var(--bg);border:1px solid var(--border);
+  border-radius:10px;
+}
+.login-toggle-btn{
+  flex:1;padding:10px 0;border-radius:8px;font-family:inherit;
+  font-size:.8125rem;font-weight:500;cursor:pointer;
+  border:none;background:transparent;color:var(--muted);
+  transition:all var(--transition);text-align:center;
+}
+.login-toggle-btn:hover{color:var(--text)}
+.login-toggle-btn.active{
+  background:var(--accent);color:#fff;
+  box-shadow:0 2px 8px rgba(79,142,247,.3);
+}
+.login-mode{animation:fadeUp 300ms ease both}
+.login-mode-desc{
+  font-size:.82rem;color:var(--muted);text-align:center;
+  margin-bottom:18px;line-height:1.5;
+}
+
+/* ── Google Sign-In Button ───────────────────── */
+.google-btn{
+  width:100%;padding:12px;border:1px solid var(--border);
+  border-radius:var(--radius);cursor:pointer;
+  font-family:inherit;font-size:.9rem;font-weight:500;
+  background:var(--bg);color:var(--text);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  transition:all var(--transition);
+}
+.google-btn:hover{
+  background:var(--surface2);border-color:var(--muted);
+  box-shadow:0 4px 16px rgba(0,0,0,.2);
+}
+.google-btn:active{transform:scale(.98)}
+.google-btn svg{flex-shrink:0}
+
+/* ── Spinner ─────────────────────────────────── */
+.spinner{
+  display:inline-block;width:16px;height:16px;
+  border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+  border-radius:50%;animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Admin Tabs (pill style) ─────────────────── */
+.admin-tabs{
+  display:flex;gap:6px;margin-top:24px;margin-bottom:4px;
+  padding:4px;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;width:fit-content;
+}
+.admin-tab{
+  padding:8px 20px;border-radius:8px;font-family:inherit;
+  font-size:.8125rem;font-weight:500;cursor:pointer;
+  border:none;background:transparent;color:var(--muted);
+  transition:all var(--transition);
+}
+.admin-tab:hover{color:var(--text)}
+.admin-tab.active{
+  background:var(--accent);color:#fff;
+  box-shadow:0 2px 8px rgba(79,142,247,.3);
+}
+
+/* ── Team Sections ───────────────────────────── */
+.team-section{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:24px;margin-top:20px;
+}
+.team-section h3{
+  font-size:1rem;font-weight:600;margin-bottom:6px;
+}
+.sec-sub{
+  font-size:.8125rem;color:var(--muted);margin-bottom:14px;
+  line-height:1.5;
+}
+.team-row{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;margin-top:10px;flex-wrap:wrap;
+}
+.create-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;
+}
+@media(max-width:700px){
+  .create-grid{grid-template-columns:1fr}
+}
+
+/* ── User Picker (checkboxes) ────────────────── */
+.user-pick{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;border:1px solid var(--border);
+  border-radius:var(--radius);margin-bottom:8px;
+  cursor:pointer;transition:all var(--transition);
+  background:var(--bg);
+}
+.user-pick:hover{border-color:var(--accent);background:rgba(79,142,247,.04)}
+.user-pick input[type="checkbox"]{
+  width:18px;height:18px;accent-color:var(--accent);
+  cursor:pointer;flex-shrink:0;
+}
+.up-name{font-size:.875rem;font-weight:500}
+.up-meta{font-size:.75rem;color:var(--muted)}
+
+/* ── Distribute Section ──────────────────────── */
+.distribute-label{
+  font-size:.8125rem;font-weight:500;color:var(--text);
+  margin-bottom:10px;
+}
+.select-all-pick{
+  border-color:var(--accent) !important;
+  background:rgba(79,142,247,.04) !important;
+  margin-bottom:4px !important;
+}
+.up-assigned-badge{
+  font-size:.7rem;font-weight:500;color:var(--accent);
+  background:rgba(79,142,247,.1);padding:4px 10px;
+  border-radius:20px;white-space:nowrap;flex-shrink:0;
+}
+.distribute-actions{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;margin-top:14px;flex-wrap:wrap;
+  padding-top:14px;border-top:1px solid var(--border);
+}
+.distribute-summary{
+  font-size:.8125rem;font-weight:500;color:var(--muted);
+}
+.no-users-msg{
+  padding:20px;text-align:center;color:var(--muted);
+  font-size:.85rem;background:var(--bg);
+  border:1px dashed var(--border);border-radius:var(--radius);
+}
+
+/* ── Progress bars (team) ────────────────────── */
+.bar-track{
+  flex:1;max-width:120px;height:8px;
+  background:rgba(255,255,255,.06);border-radius:4px;
+  overflow:hidden;
+}
+.bar-fill{
+  height:100%;background:var(--green);border-radius:4px;
+  transition:width 400ms ease;
+}
+.progress-table{
+  width:100%;border-collapse:collapse;font-size:.8125rem;
+}
+.progress-table th{
+  background:var(--surface2);color:var(--muted);font-weight:500;
+  text-align:left;padding:10px 14px;white-space:nowrap;
+  border-bottom:1px solid var(--border);font-size:.7rem;
+  text-transform:uppercase;letter-spacing:.07em;
+}
+.progress-table td{
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  vertical-align:middle;
+}
+.progress-table tr:last-child td{border-bottom:none}
+
+/* ═══════════════════════════════════════════════
+   USER SCREEN (mobile-first)
+   ═══════════════════════════════════════════════ */
+.user-wrap{
+  max-width:480px;margin:0 auto;padding:0 16px 32px;
+  min-height:100vh;background:var(--bg);
+}
+.user-header{
+  position:sticky;top:0;z-index:20;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:16px 16px 0;margin:0 -16px;
+}
+.user-header-top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-bottom:12px;
+}
+.user-header-top h2{
+  font-size:1.15rem;font-weight:600;letter-spacing:-.01em;
+}
+.u-prog{font-size:.78rem;color:var(--muted);margin-top:2px}
+.u-logout{
+  padding:6px 14px;border-radius:var(--radius-sm);
+  font-family:inherit;font-size:.75rem;font-weight:500;
+  cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--muted);
+  transition:all var(--transition);
+}
+.u-logout:hover{background:var(--surface2);color:var(--text);border-color:var(--muted)}
+.u-bar-track{
+  height:4px;background:rgba(255,255,255,.06);
+  border-radius:0;margin:0 -16px;
+}
+.u-bar-fill{
+  height:100%;background:linear-gradient(90deg,var(--green),#34d399);
+  transition:width 500ms ease;
+}
+
+/* ── User Filter Tabs ────────────────────────── */
+.user-tabs{
+  display:flex;gap:6px;margin-top:16px;margin-bottom:12px;
+  padding:4px;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;
+}
+.user-tab{
+  flex:1;padding:8px 0;border-radius:8px;font-family:inherit;
+  font-size:.8125rem;font-weight:500;cursor:pointer;
+  border:none;background:transparent;color:var(--muted);
+  transition:all var(--transition);text-align:center;
+}
+.user-tab:hover{color:var(--text)}
+.user-tab.active{
+  background:var(--accent);color:#fff;
+  box-shadow:0 2px 8px rgba(79,142,247,.25);
+}
+
+/* ── Contact Cards ───────────────────────────── */
+.contact-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:16px;margin-bottom:12px;
+  animation:fadeUp 350ms ease both;
+}
+.cc-name{font-size:1rem;font-weight:600;margin-bottom:4px}
+.cc-org{font-size:.8rem;color:var(--muted);margin-bottom:2px}
+.cc-mobile{
+  font-family:'DM Mono',monospace;font-size:.8rem;
+  color:var(--muted);margin-bottom:12px;
+}
+
+/* ── WhatsApp Send Button ────────────────────── */
+.wa-send-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;height:52px;border-radius:10px;
+  font-family:inherit;font-size:.9rem;font-weight:600;
+  cursor:pointer;border:none;
+  background:linear-gradient(135deg,#25d366,#20bd5a);color:#fff;
+  transition:opacity var(--transition),transform var(--transition),box-shadow var(--transition);
+  box-shadow:0 4px 16px rgba(37,211,102,.25);
+}
+.wa-send-btn:hover{opacity:.92;box-shadow:0 6px 24px rgba(37,211,102,.35)}
+.wa-send-btn:active{transform:scale(.97)}
+.wa-send-btn svg{flex-shrink:0}
+
+/* ── Sent Badge ──────────────────────────────── */
+.sent-badge{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;height:44px;border-radius:10px;
+  font-size:.85rem;font-weight:600;
+  background:rgba(61,214,140,.1);color:var(--green);
+  border:1px solid rgba(61,214,140,.2);
+}
+
+/* ── User Empty State ────────────────────────── */
+.user-empty{
+  text-align:center;padding:48px 20px;color:var(--muted);
+  font-size:.9rem;
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     SCREEN 1 — LOGIN
+     ════════════════════════════════════════════ -->
+<div id="loginScreen" class="screen">
+  <div class="login-card">
+    <div class="login-logo">👥</div>
+    <h2>Hackathon Team</h2>
+    <div class="login-sub">Choose how you want to sign in</div>
+
+    <!-- Login mode toggle -->
+    <div class="login-toggle">
+      <button class="login-toggle-btn active" data-mode="user" id="toggleUser">👤 Team Member</button>
+      <button class="login-toggle-btn" data-mode="admin" id="toggleAdmin">🔐 Admin</button>
+    </div>
+
+    <!-- MODE: Team Member (Google) -->
+    <div id="loginModeUser" class="login-mode">
+      <div class="login-mode-desc">Sign in with your Google account to access your assigned contacts.</div>
+      <button type="button" class="google-btn" id="googleSignInBtn">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#34A853" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#FBBC05" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+    </div>
+
+    <!-- MODE: Admin (Email/Password) -->
+    <div id="loginModeAdmin" class="login-mode" style="display:none">
+      <form id="loginForm">
+        <div class="login-field">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" autocomplete="email" required>
+        </div>
+        <div class="login-field">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="login-btn" id="loginBtn">Sign In as Admin</button>
+      </form>
+    </div>
+
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SCREEN 2 — ADMIN (existing dashboard + Team tab)
+     ════════════════════════════════════════════ -->
+<div id="adminScreen" class="screen" style="display:none">
+
+<!-- ── Gradient Top Bar ─────────────────────── -->
+<div class="gradient-bar"></div>
+
+<!-- ── Header ──────────────────────────────── -->
+<header class="header" id="header">
+  <div class="header-title">
+    <h1><span class="t-muted">Hackathon</span> <span class="t-bold">Dashboard</span></h1>
+    <div class="pulse-dot"></div>
+  </div>
+  <div class="header-actions">
+    <!-- Hidden original buttons for JS binding -->
+    <button class="hidden-btn" id="btnImportMemory">📥 Import Memory</button>
+    <button class="hidden-btn" id="btnExportMemory">📤 Export Memory</button>
+    <button class="hidden-btn" id="btnResetEmail">↩ Reset Email</button>
+    <button class="hidden-btn" id="btnResetWa">↩ Reset WA</button>
+    <button class="hidden-btn" id="btnDeleteAll">🗑 Delete All</button>
+
+    <button class="btn btn-ghost" id="btnImportCSV">📂 Import CSV</button>
+    <button class="btn-icon" id="btnSettings" title="Settings">⚙️</button>
+    <button class="btn btn-ghost" id="adminLogout" title="Log out">⎋ Logout</button>
+  </div>
+</header>
+
+<!-- ── Settings Drawer ─────────────────────── -->
+<div class="drawer-overlay" id="drawerOverlay">
+  <div class="drawer" id="settingsDrawer">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="drawer-close" id="drawerClose">✕</button>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Data Management</div>
+      <button class="drawer-btn" id="drawerImportMemory">📥 Import Memory</button>
+      <button class="drawer-btn" id="drawerExportMemory">📤 Export Memory</button>
+      <div class="drawer-divider"></div>
+      <button class="drawer-btn drawer-btn-orange" id="drawerResetEmail">↩ Reset Email Status</button>
+      <button class="drawer-btn drawer-btn-orange" id="drawerResetWa">↩ Reset WhatsApp Status</button>
+      <div class="drawer-divider"></div>
+      <button class="drawer-btn drawer-btn-danger" id="drawerDeleteAll">🗑 Delete All Records</button>
+    </div>
+    <div class="drawer-about">
+      <p>Hackathon Dashboard v1.0</p>
+      <p>Export your memory before switching devices</p>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="csvInput" accept=".csv" hidden>
+<input type="file" id="jsonInput" accept=".json" hidden>
+
+<div class="container">
+
+  <!-- ── Admin Tabs (Firebase add-on) ─────── -->
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="admin-tab" data-tab="team">👥 Team</button>
+  </div>
+
+  <div id="tabDashboard" class="admin-tab-pane">
+
+  <!-- ── Stats ────────────────────────────── -->
+  <section class="stats" id="statsBar">
+    <div class="stat-card">
+      <span class="stat-bg-icon">👥</span>
+      <div class="stat-label">Total Contacts</div>
+      <div class="stat-value stat-blue" id="statTotal">0</div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-bg-icon">✅</span>
+      <div class="stat-label">Registration</div>
+      <div class="stat-value">
+        <span class="stat-green" id="statComplete">0</span>
+        <span class="sep">/</span>
+        <span class="stat-orange" id="statIncomplete">0</span>
+      </div>
+      <div class="stat-sub">Complete / Incomplete</div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-bg-icon">✉</span>
+      <div class="stat-label">Emails</div>
+      <div class="stat-value">
+        <span class="stat-green" id="statEmailSent">0</span>
+        <span class="sep">/</span>
+        <span class="stat-orange" id="statEmailPending">0</span>
+      </div>
+      <div class="stat-sub">Sent / Pending</div>
+      <div class="stat-progress"><div class="stat-progress-fill" id="emailProgress" style="width:0%;background:var(--orange)"></div></div>
+    </div>
+    <div class="stat-card">
+      <span class="stat-bg-icon">💬</span>
+      <div class="stat-label">WhatsApp</div>
+      <div class="stat-value">
+        <span class="stat-green" id="statWaSent">0</span>
+        <span class="sep">/</span>
+        <span class="stat-orange" id="statWaPending">0</span>
+      </div>
+      <div class="stat-sub">Sent / Pending</div>
+      <div class="stat-progress"><div class="stat-progress-fill" id="waProgress" style="width:0%;background:var(--wa)"></div></div>
+    </div>
+  </section>
+
+  <!-- ── Templates ────────────────────────── -->
+  <div class="templates-card" id="templatesCard">
+    <div class="templates-header" id="templatesToggle">
+      <h2>📨 Message Templates</h2>
+      <span class="templates-chevron">▼</span>
+    </div>
+    <div class="templates-body">
+      <div class="templates-grid">
+        <div>
+          <label class="tpl-label">WhatsApp Message</label>
+          <textarea id="tplWa" placeholder="Hi {name}! We're excited to have you at our hackathon..."></textarea>
+          <div class="tpl-char" id="tplWaCount">0 characters</div>
+        </div>
+        <div>
+          <label class="tpl-label">Email Subject</label>
+          <input type="text" id="tplEmailSubject" placeholder="🚀 Hackathon — Important Update">
+          <label class="tpl-label" style="margin-top:12px">Email Body</label>
+          <textarea id="tplEmailBody" placeholder="Dear {name}, We're excited..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toolbar ──────────────────────────── -->
+  <div class="toolbar" id="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <input type="text" id="searchInput" placeholder="Search name, email, team, org...">
+    </div>
+    <select id="filterStatus">
+      <option value="">All Status</option>
+      <option value="Complete">Complete</option>
+      <option value="Incomplete">Incomplete</option>
+    </select>
+    <select id="filterEmail">
+      <option value="">All Emails</option>
+      <option value="pending">Pending</option>
+      <option value="sent">Sent</option>
+    </select>
+    <select id="filterWa">
+      <option value="">All WhatsApp</option>
+      <option value="pending">Pending</option>
+      <option value="sent">Sent</option>
+    </select>
+    <button class="btn btn-green" id="btnBulkEmail"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> Send Bulk Email</button>
+  </div>
+
+  <!-- ── Table ────────────────────────────── -->
+  <div class="table-wrap" id="tableWrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Name</th><th>Team</th><th>Role</th>
+          <th>Email</th><th>Mobile</th><th>Organisation</th>
+          <th>Reg Status</th><th>WhatsApp</th><th>Email</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+  <div class="pagination" id="pagination"></div>
+
+  </div><!-- #tabDashboard -->
+
+  <!-- ════════════════════════════════════════
+       TEAM TAB (Firebase add-on)
+       ════════════════════════════════════════ -->
+  <div id="tabTeam" class="admin-tab-pane" style="display:none">
+
+    <!-- Section A — WA Message Template -->
+    <div class="team-section">
+      <h3>💬 WhatsApp Message Template</h3>
+      <div class="sec-sub">Use <code style="color:var(--accent)">{name}</code> to insert the contact's name. Stored in the cloud for all team members.</div>
+      <textarea id="teamWaTpl" placeholder="Hi {name}, welcome to the hackathon!..."></textarea>
+      <div class="team-row">
+        <span class="sec-sub" style="margin:0" id="teamWaCount">0 characters</span>
+        <button class="btn btn-green" id="teamSaveTpl">Save Template</button>
+      </div>
+    </div>
+
+    <!-- Section B — Import Contacts to Cloud -->
+    <div class="team-section">
+      <h3>☁️ Import Contacts to Cloud</h3>
+      <div class="sec-sub">Push contacts from this device (localStorage) to Firestore. Deduplicated by email — existing cloud contacts are left untouched.</div>
+      <button class="btn btn-green" id="teamSyncBtn">⬆ Sync Contacts to Cloud</button>
+    </div>
+
+    <!-- Section C — Distribute Contacts -->
+    <div class="team-section">
+      <h3>🔀 Distribute Contacts</h3>
+      <div class="sec-sub"><span id="teamUnassigned" style="color:var(--accent);font-weight:700;font-size:1.1rem">0</span> unassigned contacts in cloud</div>
+      <div class="distribute-label">Select team members to assign contacts to:</div>
+      <div class="select-all-row" id="selectAllRow" style="display:none">
+        <label class="user-pick select-all-pick">
+          <input type="checkbox" id="selectAllUsers">
+          <div><div class="up-name">Select All</div></div>
+        </label>
+      </div>
+      <div id="teamUserPicks"></div>
+      <div class="distribute-actions">
+        <div class="distribute-summary" id="distributeSummary">No users selected</div>
+        <button class="btn btn-green" id="teamDistributeBtn">🔀 Distribute Equally</button>
+      </div>
+    </div>
+
+    <!-- Section D — Team Progress (realtime) -->
+    <div class="team-section">
+      <h3>📈 Team Progress</h3>
+      <div class="sec-sub">Live — updates as team members send WhatsApp messages.</div>
+      <div style="overflow-x:auto">
+        <table class="progress-table">
+          <thead>
+            <tr><th>Name</th><th>Assigned</th><th>Sent</th><th>Pending</th><th>Progress</th></tr>
+          </thead>
+          <tbody id="teamProgressBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section E — Team Members (auto-populated via Google Sign-In) -->
+    <div class="team-section">
+      <h3>👤 Team Members</h3>
+      <div class="sec-sub">Team members appear here automatically when they sign in with Google. Share this page link with your team.</div>
+      <div style="overflow-x:auto">
+        <table class="progress-table">
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Assigned</th><th>Sent</th><th></th></tr>
+          </thead>
+          <tbody id="manageUsersBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- #tabTeam -->
+
+</div><!-- .container -->
+
+</div><!-- #adminScreen -->
+
+<!-- ════════════════════════════════════════════
+     SCREEN 3 — USER (mobile)
+     ════════════════════════════════════════════ -->
+<div id="userScreen" class="screen" style="display:none">
+  <div class="user-wrap">
+    <div class="user-header">
+      <div class="user-header-top">
+        <div>
+          <h2 id="userHello">Hello</h2>
+          <div class="u-prog"><span id="userSent">0</span> / <span id="userTotal">0</span> sent</div>
+        </div>
+        <button class="u-logout" id="userLogout">Logout</button>
+      </div>
+      <div class="u-bar-track"><div class="u-bar-fill" id="userBar" style="width:0%"></div></div>
+    </div>
+    <div class="user-tabs">
+      <button class="user-tab" data-utab="all">All</button>
+      <button class="user-tab active" data-utab="pending">Pending</button>
+      <button class="user-tab" data-utab="sent">Sent</button>
+    </div>
+    <div class="user-list" id="userList"></div>
+  </div>
+</div>
+
+<!-- ── Modal ───────────────────────────────── -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-top-bar" id="modalTopBar"></div>
+    <div class="modal-inner">
+      <div class="modal-emoji" id="modalEmoji"></div>
+      <h3 id="modalTitle"></h3>
+      <p id="modalBody"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancel">Cancel</button>
+        <button class="btn" id="modalConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toasts ──────────────────────────────── -->
+<div class="toast-container" id="toastContainer"></div>
+
+
+<script>
+/* ================================================================
+   STATE
+   ================================================================ */
+const STORAGE_CONTACTS = "hk_contacts";
+const STORAGE_WA       = "hk_wa_msg";
+const STORAGE_ESUBJ    = "hk_email_subject";
+const STORAGE_EBODY    = "hk_email_body";
+const PER_PAGE = 20;
+
+let currentPage = 1;
+let filteredContacts = [];
+
+/* ================================================================
+   HELPERS — localStorage
+   ================================================================ */
+function getContacts() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_CONTACTS)) || []; }
+  catch { return []; }
+}
+
+function saveContacts(arr) {
+  localStorage.setItem(STORAGE_CONTACTS, JSON.stringify(arr));
+}
+
+/* ================================================================
+   TOAST
+   ================================================================ */
+function showToast(message, type) {
+  type = type || "info";
+  var container = document.getElementById("toastContainer");
+  var el = document.createElement("div");
+  el.className = "toast " + type;
+  el.textContent = message;
+  var prog = document.createElement("div");
+  prog.className = "toast-progress";
+  el.appendChild(prog);
+  container.appendChild(el);
+  setTimeout(function() {
+    el.classList.add("removing");
+    setTimeout(function() { el.remove(); }, 260);
+  }, 3000);
+}
+
+/* ================================================================
+   MODAL
+   ================================================================ */
+var _modalResolve = null;
+
+function showModal(title, body, confirmText, confirmClass) {
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").textContent = body;
+  var confirmBtn = document.getElementById("modalConfirm");
+  confirmBtn.textContent = confirmText;
+  confirmBtn.className = "btn " + (confirmClass || "btn-accent");
+
+  /* Dynamic top bar + emoji */
+  var topBar = document.getElementById("modalTopBar");
+  var emojiEl = document.getElementById("modalEmoji");
+  topBar.className = "modal-top-bar";
+  if (title.indexOf("Delete") !== -1) {
+    topBar.classList.add("bar-red");
+    emojiEl.textContent = "⚠️";
+  } else if (title.indexOf("Email") !== -1 || title.indexOf("Sent") !== -1) {
+    topBar.classList.add("bar-green");
+    emojiEl.textContent = "✉️";
+  } else {
+    emojiEl.textContent = "💡";
+  }
+
+  document.getElementById("modalOverlay").classList.add("visible");
+  return new Promise(function(resolve) { _modalResolve = resolve; });
+}
+
+function closeModal(result) {
+  document.getElementById("modalOverlay").classList.remove("visible");
+  if (_modalResolve) { _modalResolve(result); _modalResolve = null; }
+}
+
+/* ================================================================
+   STATS
+   ================================================================ */
+function renderStats() {
+  var contacts = getContacts();
+  var total = contacts.length;
+  var complete = 0, incomplete = 0, eSent = 0, ePend = 0, wSent = 0, wPend = 0;
+  for (var i = 0; i < contacts.length; i++) {
+    var c = contacts[i];
+    if (c.regStatus && c.regStatus.toLowerCase() === "complete") complete++; else incomplete++;
+    if (c.email_sent) eSent++; else ePend++;
+    if (c.wa_sent) wSent++; else wPend++;
+  }
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statComplete").textContent = complete;
+  document.getElementById("statIncomplete").textContent = incomplete;
+  document.getElementById("statEmailSent").textContent = eSent;
+  document.getElementById("statEmailPending").textContent = ePend;
+  document.getElementById("statWaSent").textContent = wSent;
+  document.getElementById("statWaPending").textContent = wPend;
+
+  /* Progress bars */
+  var ePct = total > 0 ? Math.round((eSent / total) * 100) : 0;
+  var wPct = total > 0 ? Math.round((wSent / total) * 100) : 0;
+  document.getElementById("emailProgress").style.width = ePct + "%";
+  document.getElementById("waProgress").style.width = wPct + "%";
+
+  /* Bulk email glow */
+  var pending = contacts.filter(function(c) { return !c.email_sent; }).length;
+  document.getElementById("btnBulkEmail").classList.toggle("has-pending", pending > 0);
+}
+
+/* ================================================================
+   FILTER + SEARCH
+   ================================================================ */
+function applyFilters() {
+  var contacts = getContacts();
+  var q = document.getElementById("searchInput").value.toLowerCase().trim();
+  var fStatus = document.getElementById("filterStatus").value;
+  var fEmail  = document.getElementById("filterEmail").value;
+  var fWa     = document.getElementById("filterWa").value;
+
+  filteredContacts = contacts.filter(function(c) {
+    if (q) {
+      var haystack = [c.name, c.email, c.teamName, c.org, c.mobile, c.role].join(" ").toLowerCase();
+      if (haystack.indexOf(q) === -1) return false;
+    }
+    if (fStatus) {
+      var rs = (c.regStatus || "").toLowerCase();
+      if (fStatus === "Complete" && rs !== "complete") return false;
+      if (fStatus === "Incomplete" && rs === "complete") return false;
+    }
+    if (fEmail === "sent" && !c.email_sent) return false;
+    if (fEmail === "pending" && c.email_sent) return false;
+    if (fWa === "sent" && !c.wa_sent) return false;
+    if (fWa === "pending" && c.wa_sent) return false;
+    return true;
+  });
+
+  var maxPage = Math.max(1, Math.ceil(filteredContacts.length / PER_PAGE));
+  if (currentPage > maxPage) currentPage = maxPage;
+
+  renderTable();
+  renderPagination();
+}
+
+/* ================================================================
+   TABLE
+   ================================================================ */
+function renderTable() {
+  var tbody = document.getElementById("tableBody");
+  if (filteredContacts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10">'
+      + '<div class="empty-state">'
+      + '<span class="empty-icon">📋</span>'
+      + '<div class="empty-title">No contacts yet</div>'
+      + '<div class="empty-sub">Import a CSV or restore from backup to get started</div>'
+      + '<div class="empty-actions">'
+      + '<button class="btn btn-ghost" id="emptyImportCSV">📂 Import CSV</button>'
+      + '<button class="btn btn-ghost" id="emptyImportMemory">📥 Import Memory</button>'
+      + '</div>'
+      + '</div></td></tr>';
+    /* Wire up empty-state buttons after insertion */
+    setTimeout(function() {
+      var eCSV = document.getElementById("emptyImportCSV");
+      var eMem = document.getElementById("emptyImportMemory");
+      if (eCSV) eCSV.addEventListener("click", function() { document.getElementById("btnImportCSV").click(); });
+      if (eMem) eMem.addEventListener("click", function() { document.getElementById("btnImportMemory").click(); });
+    }, 0);
+    return;
+  }
+
+  var start = (currentPage - 1) * PER_PAGE;
+  var end = Math.min(start + PER_PAGE, filteredContacts.length);
+  var html = "";
+
+  var waSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+
+  for (var i = start; i < end; i++) {
+    var c = filteredContacts[i];
+    var roleBadge = "";
+    if (c.role) {
+      var rl = c.role.toLowerCase();
+      if (rl.indexOf("leader") !== -1) {
+        roleBadge = '<span class="badge badge-blue">' + escHtml(c.role) + '</span>';
+      } else {
+        roleBadge = '<span class="badge badge-green">' + escHtml(c.role) + '</span>';
+      }
+    }
+    var regBadge = "";
+    if (c.regStatus) {
+      if (c.regStatus.toLowerCase() === "complete") {
+        regBadge = '<span class="badge badge-green">Complete</span>';
+      } else {
+        regBadge = '<span class="badge badge-orange">Incomplete</span>';
+      }
+    }
+
+    var waCell = "";
+    if (c.wa_sent) {
+      waCell = '<button class="wa-btn" data-wa-resend="' + escAttr(c._id) + '">' + waSvg + ' Sent</button>';
+    } else {
+      waCell = '<button class="wa-btn" data-wa-send="' + escAttr(c._id) + '">' + waSvg + ' Send</button>';
+    }
+
+    var emailCell = c.email_sent
+      ? '<span class="badge badge-green">✓ Sent</span>'
+      : '<span class="badge badge-muted">Pending</span>';
+
+    html += '<tr>'
+      + '<td>' + (i + 1) + '</td>'
+      + '<td class="col-name">' + escHtml(c.name || "") + '</td>'
+      + '<td class="col-team">' + escHtml(c.teamName || "") + '</td>'
+      + '<td>' + roleBadge + '</td>'
+      + '<td class="col-email">' + escHtml(c.email || "") + '</td>'
+      + '<td class="col-mobile">' + escHtml(c.mobile || "") + '</td>'
+      + '<td>' + escHtml(c.org || "") + '</td>'
+      + '<td>' + regBadge + '</td>'
+      + '<td>' + waCell + '</td>'
+      + '<td>' + emailCell + '</td>'
+      + '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function escHtml(s) {
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode(s));
+  return d.innerHTML;
+}
+
+function escAttr(s) {
+  return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+function renderPagination() {
+  var wrap = document.getElementById("pagination");
+  var total = filteredContacts.length;
+  var totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+
+  if (totalPages <= 1 && total === 0) { wrap.innerHTML = ""; return; }
+
+  var start = (currentPage - 1) * PER_PAGE + 1;
+  var end = Math.min(currentPage * PER_PAGE, total);
+
+  var html = '<div class="pagination-left">Showing ' + start + '–' + end + ' of ' + total + ' records</div>';
+  html += '<div class="pagination-right">';
+
+  html += '<button class="page-btn nav-btn" data-page="prev" ' + (currentPage === 1 ? 'disabled' : '') + '>← Prev</button>';
+
+  var startP = Math.max(1, currentPage - 3);
+  var endP = Math.min(totalPages, currentPage + 3);
+
+  if (startP > 1) {
+    html += '<button class="page-btn" data-page="1">1</button>';
+    if (startP > 2) html += '<span class="page-info">…</span>';
+  }
+
+  for (var p = startP; p <= endP; p++) {
+    html += '<button class="page-btn' + (p === currentPage ? ' active' : '') + '" data-page="' + p + '">' + p + '</button>';
+  }
+
+  if (endP < totalPages) {
+    if (endP < totalPages - 1) html += '<span class="page-info">…</span>';
+    html += '<button class="page-btn" data-page="' + totalPages + '">' + totalPages + '</button>';
+  }
+
+  html += '<button class="page-btn nav-btn" data-page="next" ' + (currentPage === totalPages ? 'disabled' : '') + '>Next →</button>';
+  html += '</div>';
+
+  wrap.innerHTML = html;
+}
+
+/* ================================================================
+   WHATSAPP SEND
+   ================================================================ */
+function handleWaSend(id, isResend) {
+  var contacts = getContacts();
+  var idx = -1;
+  for (var i = 0; i < contacts.length; i++) {
+    if (contacts[i]._id === id) { idx = i; break; }
+  }
+  if (idx === -1) return;
+  var c = contacts[idx];
+
+  var msg = localStorage.getItem(STORAGE_WA) || "";
+  var personalised = msg.replace(/\{name\}/gi, c.name || "");
+  var mobile = (c.mobile || "").replace(/[^0-9+]/g, "").replace(/^\+/, "");
+  var url = "https://wa.me/" + encodeURIComponent(mobile) + "?text=" + encodeURIComponent(personalised);
+  window.open(url, "_blank");
+
+  if (!isResend) {
+    contacts[idx].wa_sent = true;
+    saveContacts(contacts);
+    renderStats();
+    applyFilters();
+  }
+}
+
+/* ================================================================
+   BULK EMAIL
+   ================================================================ */
+function handleBulkEmail() {
+  var contacts = getContacts();
+  var pending = contacts.filter(function(c) { return !c.email_sent && c.email; });
+
+  if (pending.length === 0) {
+    showToast("All emails already sent!", "info");
+    return;
+  }
+
+  /* Build mailto */
+  var bcc = pending.map(function(c) { return c.email; }).filter(Boolean).join(",");
+  var subject = encodeURIComponent(localStorage.getItem(STORAGE_ESUBJ) || "");
+  var body = encodeURIComponent(localStorage.getItem(STORAGE_EBODY) || "");
+  var mailto = "mailto:?bcc=" + encodeURIComponent(bcc) + "&subject=" + subject + "&body=" + body;
+
+  /* Open mail client */
+  window.location.href = mailto;
+
+  /* When user returns to this tab, ask if they sent it */
+  var asked = false;
+  var count = pending.length;
+
+  function askOnReturn() {
+    if (asked) return;
+    if (document.visibilityState === "visible") {
+      asked = true;
+      document.removeEventListener("visibilitychange", askOnReturn);
+      window.removeEventListener("pageshow", askOnReturn);
+
+      /* Small delay so the tab switch feels natural */
+      setTimeout(function() {
+        showModal(
+          "✉️ Did You Send the Email?",
+          "Did you successfully send the email to " + count + " recipient" + (count > 1 ? "s" : "") + "? If yes, they will be marked as sent and won't be selected next time.",
+          "Yes, Mark as Sent",
+          "btn-green"
+        ).then(function(confirmed) {
+          if (confirmed) {
+            var pendingIds = {};
+            for (var i = 0; i < pending.length; i++) pendingIds[pending[i]._id] = true;
+            var all = getContacts();
+            for (var j = 0; j < all.length; j++) {
+              if (pendingIds[all[j]._id]) all[j].email_sent = true;
+            }
+            saveContacts(all);
+            renderStats();
+            applyFilters();
+            showToast("✅ " + count + " emails marked as sent", "success");
+          }
+        });
+      }, 400);
+    }
+  }
+
+  document.addEventListener("visibilitychange", askOnReturn);
+  window.addEventListener("pageshow", askOnReturn);
+}
+
+/* ================================================================
+   CSV IMPORT
+   ================================================================ */
+function handleCSVImport(file) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      var rows = results.data;
+      var existing = getContacts();
+      var existingIds = {};
+      for (var i = 0; i < existing.length; i++) existingIds[existing[i]._id] = true;
+
+      var added = 0, dupes = 0;
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var email = (row["Candidate's Email"] || "").trim();
+        if (!email) continue;
+
+        if (existingIds[email]) { dupes++; continue; }
+
+        existing.push({
+          _id: email,
+          name: (row["Candidate's Name"] || "").trim(),
+          email: email,
+          mobile: String(row["Candidate's Mobile"] || "").trim(),
+          teamName: (row["Team Name"] || "").trim(),
+          teamId: String(row["Team ID"] || "").trim(),
+          role: (row["Candidate role"] || "").trim(),
+          org: (row["Candidate's Organisation"] || "").trim(),
+          location: (row["Candidate's Location"] || "").trim(),
+          regStatus: (row["Reg. Status"] || "").trim(),
+          domain: (row["Domain"] || "").trim(),
+          course: (row["Course"] || "").trim(),
+          track: (row["Choose A Single Track"] || "").trim(),
+          regTime: (row["Registration Time"] || "").trim(),
+          email_sent: false,
+          wa_sent: false,
+          imported_at: Date.now()
+        });
+        existingIds[email] = true;
+        added++;
+      }
+
+      saveContacts(existing);
+      renderStats();
+      currentPage = 1;
+      applyFilters();
+      showToast("✅ " + added + " new contacts added, " + dupes + " duplicates skipped", "success");
+    },
+    error: function(err) {
+      showToast("❌ CSV parse error: " + err.message, "error");
+    }
+  });
+}
+
+/* ================================================================
+   EXPORT MEMORY
+   ================================================================ */
+function handleExportMemory() {
+  var data = {
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    contacts: getContacts(),
+    templates: {
+      waMessage: localStorage.getItem(STORAGE_WA) || "",
+      emailSubject: localStorage.getItem(STORAGE_ESUBJ) || "",
+      emailBody: localStorage.getItem(STORAGE_EBODY) || ""
+    }
+  };
+  var json = JSON.stringify(data, null, 2);
+  var blob = new Blob([json], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  var d = new Date();
+  var dateStr = d.getFullYear() + "-"
+    + String(d.getMonth() + 1).padStart(2, "0") + "-"
+    + String(d.getDate()).padStart(2, "0");
+  a.download = "hackathon-backup-" + dateStr + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("✅ Memory exported successfully", "success");
+}
+
+/* ================================================================
+   IMPORT MEMORY
+   ================================================================ */
+function mapOldRecord(rec) {
+  var email = ((rec["Candidate's Email"] || rec.email) || "").trim();
+  return {
+    _id: email,
+    name: ((rec["Candidate's Name"] || rec.name) || "").trim(),
+    email: email,
+    mobile: String(rec["Candidate's Mobile"] || rec.mobile || "").replace(/^\+/, "").trim(),
+    teamName: (rec["Team Name"] || rec.teamName || "").trim(),
+    teamId: String(rec["Team ID"] || rec.teamId || "").trim(),
+    role: (rec["Candidate role"] || rec.role || "").trim(),
+    org: (rec["Candidate's Organisation"] || rec.org || "").trim(),
+    location: (rec["Candidate's Location"] || rec.location || "").trim(),
+    regStatus: (rec["Reg. Status"] || rec.regStatus || "").trim(),
+    domain: (rec["Domain"] || rec.domain || "").trim(),
+    course: (rec["Course"] || rec.course || "").trim(),
+    track: (rec["Choose A Single Track"] || rec.track || "").trim(),
+    regTime: (rec["Registration Time"] || rec.regTime || "").trim(),
+    email_sent: rec.email_sent || false,
+    wa_sent: rec.wa_sent || false,
+    imported_at: rec.imported_at || Date.now()
+  };
+}
+
+function handleImportMemory(file) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+
+      /* Detect format */
+      var incoming = [];
+      var isOldFormat = false;
+
+      if (data.contacts && Array.isArray(data.contacts)) {
+        /* Format 1 — new format, already mapped */
+        incoming = data.contacts;
+      } else if (data.records && Array.isArray(data.records)) {
+        /* Format 2 — old format, raw CSV field names */
+        isOldFormat = true;
+        for (var r = 0; r < data.records.length; r++) {
+          var mapped = mapOldRecord(data.records[r]);
+          if (mapped._id) incoming.push(mapped);
+        }
+      } else {
+        showToast("❌ Invalid backup file", "error");
+        return;
+      }
+
+      /* Merge with existing contacts, deduplicate by _id */
+      var existing = getContacts();
+      var existingIds = {};
+      for (var i = 0; i < existing.length; i++) existingIds[existing[i]._id] = true;
+
+      var restored = 0;
+      for (var j = 0; j < incoming.length; j++) {
+        var c = incoming[j];
+        if (!existingIds[c._id]) {
+          existing.push(c);
+          existingIds[c._id] = true;
+          restored++;
+        }
+      }
+      saveContacts(existing);
+
+      /* Restore templates if present (Format 1 only) */
+      if (data.templates) {
+        if (data.templates.waMessage) localStorage.setItem(STORAGE_WA, data.templates.waMessage);
+        if (data.templates.emailSubject) localStorage.setItem(STORAGE_ESUBJ, data.templates.emailSubject);
+        if (data.templates.emailBody) localStorage.setItem(STORAGE_EBODY, data.templates.emailBody);
+        loadTemplates();
+      }
+
+      renderStats();
+      currentPage = 1;
+      applyFilters();
+
+      if (isOldFormat) {
+        showToast("✅ " + restored + " contacts restored from old backup", "success");
+      } else {
+        showToast("✅ " + restored + " contacts restored, templates loaded", "success");
+      }
+    } catch (err) {
+      showToast("❌ Invalid backup file", "error");
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ================================================================
+   DELETE ALL
+   ================================================================ */
+function handleDeleteAll() {
+  var contacts = getContacts();
+  showModal(
+    "⚠️ Delete All Records?",
+    "This will permanently delete all " + contacts.length + " contacts. Export your memory first if you want to keep the data.",
+    "Delete All",
+    "btn-danger"
+  ).then(function(confirmed) {
+    if (confirmed) {
+      localStorage.removeItem(STORAGE_CONTACTS);
+      renderStats();
+      currentPage = 1;
+      applyFilters();
+      showToast("🗑 All contacts deleted", "info");
+    }
+  });
+}
+
+/* ================================================================
+   RESET FLAGS
+   ================================================================ */
+function handleResetEmail() {
+  var contacts = getContacts();
+  if (contacts.length === 0) return;
+  for (var i = 0; i < contacts.length; i++) contacts[i].email_sent = false;
+  saveContacts(contacts);
+  renderStats();
+  applyFilters();
+  showToast("↩ Email status reset for all contacts", "info");
+}
+
+function handleResetWa() {
+  var contacts = getContacts();
+  if (contacts.length === 0) return;
+  for (var i = 0; i < contacts.length; i++) contacts[i].wa_sent = false;
+  saveContacts(contacts);
+  renderStats();
+  applyFilters();
+  showToast("↩ WhatsApp status reset for all contacts", "info");
+}
+
+/* ================================================================
+   TEMPLATES — load / save
+   ================================================================ */
+function loadTemplates() {
+  document.getElementById("tplWa").value = localStorage.getItem(STORAGE_WA) || "";
+  document.getElementById("tplEmailSubject").value = localStorage.getItem(STORAGE_ESUBJ) || "";
+  document.getElementById("tplEmailBody").value = localStorage.getItem(STORAGE_EBODY) || "";
+  updateWaCharCount();
+}
+
+function updateWaCharCount() {
+  var len = document.getElementById("tplWa").value.length;
+  document.getElementById("tplWaCount").textContent = len + " character" + (len !== 1 ? "s" : "");
+}
+
+/* ================================================================
+   BOOT — wire up everything after DOM is ready
+   ================================================================ */
+document.addEventListener("DOMContentLoaded", function() {
+
+  /* ── Templates toggle ─────────────────── */
+  document.getElementById("templatesToggle").addEventListener("click", function() {
+    document.getElementById("templatesCard").classList.toggle("open");
+  });
+
+  /* ── Template auto-save ────────────────── */
+  document.getElementById("tplWa").addEventListener("input", function() {
+    localStorage.setItem(STORAGE_WA, this.value);
+    updateWaCharCount();
+  });
+  document.getElementById("tplEmailSubject").addEventListener("input", function() {
+    localStorage.setItem(STORAGE_ESUBJ, this.value);
+  });
+  document.getElementById("tplEmailBody").addEventListener("input", function() {
+    localStorage.setItem(STORAGE_EBODY, this.value);
+  });
+
+  /* ── Header buttons ────────────────────── */
+  document.getElementById("btnImportCSV").addEventListener("click", function() {
+    document.getElementById("csvInput").click();
+  });
+  document.getElementById("csvInput").addEventListener("change", function() {
+    if (this.files.length) { handleCSVImport(this.files[0]); this.value = ""; }
+  });
+
+  document.getElementById("btnExportMemory").addEventListener("click", handleExportMemory);
+
+  document.getElementById("btnImportMemory").addEventListener("click", function() {
+    document.getElementById("jsonInput").click();
+  });
+  document.getElementById("jsonInput").addEventListener("change", function() {
+    if (this.files.length) { handleImportMemory(this.files[0]); this.value = ""; }
+  });
+
+  document.getElementById("btnDeleteAll").addEventListener("click", handleDeleteAll);
+
+  /* ── Toolbar ───────────────────────────── */
+  document.getElementById("searchInput").addEventListener("input", function() {
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById("filterStatus").addEventListener("change", function() {
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById("filterEmail").addEventListener("change", function() {
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById("filterWa").addEventListener("change", function() {
+    currentPage = 1;
+    applyFilters();
+  });
+
+  document.getElementById("btnBulkEmail").addEventListener("click", handleBulkEmail);
+  document.getElementById("btnResetEmail").addEventListener("click", handleResetEmail);
+  document.getElementById("btnResetWa").addEventListener("click", handleResetWa);
+
+  /* ── Modal ──────────────────────────────── */
+  document.getElementById("modalOverlay").addEventListener("click", function(e) {
+    if (e.target === this) closeModal(false);
+  });
+  document.getElementById("modalCancel").addEventListener("click", function() {
+    closeModal(false);
+  });
+  document.getElementById("modalConfirm").addEventListener("click", function() {
+    closeModal(true);
+  });
+
+  /* ── Pagination (delegated) ────────────── */
+  document.getElementById("pagination").addEventListener("click", function(e) {
+    var btn = e.target.closest(".page-btn");
+    if (!btn || btn.disabled) return;
+    var val = btn.getAttribute("data-page");
+    var totalPages = Math.max(1, Math.ceil(filteredContacts.length / PER_PAGE));
+    if (val === "prev") { if (currentPage > 1) currentPage--; }
+    else if (val === "next") { if (currentPage < totalPages) currentPage++; }
+    else { currentPage = parseInt(val, 10); }
+    renderTable();
+    renderPagination();
+    document.getElementById("tableWrap").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  /* ── Table clicks (delegated) ──────────── */
+  document.getElementById("tableBody").addEventListener("click", function(e) {
+    var sendBtn = e.target.closest("[data-wa-send]");
+    if (sendBtn) {
+      handleWaSend(sendBtn.getAttribute("data-wa-send"), false);
+      return;
+    }
+    var resendBtn = e.target.closest("[data-wa-resend]");
+    if (resendBtn) {
+      handleWaSend(resendBtn.getAttribute("data-wa-resend"), true);
+      return;
+    }
+  });
+
+  /* ── Settings Drawer ───────────────────── */
+  function openDrawer() {
+    document.getElementById("drawerOverlay").classList.add("visible");
+  }
+  function closeDrawer() {
+    document.getElementById("drawerOverlay").classList.remove("visible");
+  }
+
+  document.getElementById("btnSettings").addEventListener("click", openDrawer);
+  document.getElementById("drawerClose").addEventListener("click", closeDrawer);
+  document.getElementById("drawerOverlay").addEventListener("click", function(e) {
+    if (e.target === this) closeDrawer();
+  });
+
+  /* Drawer buttons → trigger original hidden buttons */
+  document.getElementById("drawerImportMemory").addEventListener("click", function() {
+    closeDrawer();
+    document.getElementById("btnImportMemory").click();
+  });
+  document.getElementById("drawerExportMemory").addEventListener("click", function() {
+    closeDrawer();
+    document.getElementById("btnExportMemory").click();
+  });
+  document.getElementById("drawerResetEmail").addEventListener("click", function() {
+    closeDrawer();
+    document.getElementById("btnResetEmail").click();
+  });
+  document.getElementById("drawerResetWa").addEventListener("click", function() {
+    closeDrawer();
+    document.getElementById("btnResetWa").click();
+  });
+  document.getElementById("drawerDeleteAll").addEventListener("click", function() {
+    closeDrawer();
+    document.getElementById("btnDeleteAll").click();
+  });
+
+  /* ── Initial render ────────────────────── */
+  loadTemplates();
+  renderStats();
+  applyFilters();
+});
+
+/* ================================================================
+   ════════════════════════════════════════════════════════════
+   FIREBASE ADD-ON  (additive — existing code above is untouched)
+   ════════════════════════════════════════════════════════════
+   ================================================================ */
+(function () {
+  /* ── Firebase config (FILL IN REAL VALUES) ── */
+  const firebaseConfig = {
+apiKey: "AIzaSyBKGiQ2hxTw9YlGjseoaD4xT3hoNG_JxvA",
+authDomain: "hackathon-dashboard-bf35f.firebaseapp.com",
+projectId: "hackathon-dashboard-bf35f",
+storageBucket: "hackathon-dashboard-bf35f.firebasestorage.app",
+messagingSenderId: "914766834792",
+appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
+};
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
+
+  /* Google Auth Provider */
+  const googleProvider = new firebase.auth.GoogleAuthProvider();
+
+  /* ── Screen management ── */
+  function showScreen(name) {
+    document.getElementById("loginScreen").style.display = name === "login" ? "flex" : "none";
+    document.getElementById("adminScreen").style.display = name === "admin" ? "block" : "none";
+    document.getElementById("userScreen").style.display  = name === "user"  ? "block" : "none";
+  }
+
+  /* ── Shared state ── */
+  let currentUser = null, currentRole = null, currentName = "";
+  let adminInited = false;
+  let cloudContacts = [], cloudUsers = [];
+  let unsubAdminContacts = null, unsubAdminUsers = null;
+  let unsubUserContacts = null;
+  let cloudTemplate = "";
+  const selectedUserIds = new Set();
+  let userFilter = "pending";
+
+  function setLoginLoading(on) {
+    const btn = document.getElementById("loginBtn");
+    btn.disabled = on;
+    btn.innerHTML = on ? '<span class="spinner"></span> Signing in…' : "Sign In";
+  }
+
+  /* ── Routing ── */
+  async function routeUser(user) {
+    try {
+      const snap = await db.collection("users").doc(user.uid).get();
+      let data = snap.exists ? snap.data() : null;
+      let role = data ? data.role : null;
+
+      /* If user signed in via Google and has no Firestore doc yet, auto-create as "user" */
+      if (!data && user.providerData && user.providerData.some(function(p) { return p.providerId === "google.com"; })) {
+        const newDoc = {
+          name: user.displayName || (user.email || "").split("@")[0],
+          email: user.email || "",
+          photoURL: user.photoURL || "",
+          role: "user",
+          createdAt: serverTimestamp()
+        };
+        await db.collection("users").doc(user.uid).set(newDoc);
+        data = newDoc;
+        role = "user";
+      }
+
+      currentUser = user;
+      currentRole = role;
+      currentName = (data && data.name) || user.displayName || (user.email || "").split("@")[0] || "there";
+      setLoginLoading(false);
+
+      if (role === "admin") {
+        showScreen("admin");
+        initAdminTeam();
+      } else if (role === "user") {
+        showScreen("user");
+        initUserScreen();
+      } else {
+        document.getElementById("loginError").textContent =
+          "Your account has no assigned role. Contact an administrator.";
+        await auth.signOut();
+        showScreen("login");
+      }
+    } catch (e) {
+      setLoginLoading(false);
+      document.getElementById("loginError").textContent = "Could not load your account. " + e.message;
+    }
+  }
+
+  auth.onAuthStateChanged(function (user) {
+    if (user) routeUser(user);
+    else { teardown(); showScreen("login"); }
+  });
+
+  function teardown() {
+    currentUser = null; currentRole = null;
+    if (unsubAdminContacts) { unsubAdminContacts(); unsubAdminContacts = null; }
+    if (unsubAdminUsers) { unsubAdminUsers(); unsubAdminUsers = null; }
+    if (unsubUserContacts) { unsubUserContacts(); unsubUserContacts = null; }
+    adminInited = false;
+  }
+
+  /* ── Login mode toggle ── */
+  document.querySelectorAll(".login-toggle-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".login-toggle-btn").forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      const mode = btn.getAttribute("data-mode");
+      document.getElementById("loginModeUser").style.display = mode === "user" ? "block" : "none";
+      document.getElementById("loginModeAdmin").style.display = mode === "admin" ? "block" : "none";
+      document.getElementById("loginError").textContent = "";
+    });
+  });
+
+  /* ── Admin login form (email/password) ── */
+  document.getElementById("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    document.getElementById("loginError").textContent = "";
+    setLoginLoading(true);
+    const email = document.getElementById("loginEmail").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    auth.signInWithEmailAndPassword(email, password).catch(function (err) {
+      setLoginLoading(false);
+      document.getElementById("loginError").textContent =
+        (err && err.code && err.code.indexOf("auth/") === 0)
+          ? "Invalid email or password." : (err.message || "Sign in failed.");
+    });
+  });
+
+  /* ── Google sign-in for team members ── */
+  document.getElementById("googleSignInBtn").addEventListener("click", function () {
+    document.getElementById("loginError").textContent = "";
+    auth.signInWithPopup(googleProvider).catch(function (err) {
+      if (err.code !== "auth/popup-closed-by-user") {
+        document.getElementById("loginError").textContent = err.message || "Google sign-in failed.";
+      }
+    });
+  });
+
+  /* ── Logout ── */
+  function doLogout() { auth.signOut().then(function () { showScreen("login"); }); }
+  document.getElementById("adminLogout").addEventListener("click", doLogout);
+  document.getElementById("userLogout").addEventListener("click", doLogout);
+
+  /* ════════════════════════════════════════════
+     ADMIN — tab switching
+     ════════════════════════════════════════════ */
+  document.querySelectorAll(".admin-tab").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      document.querySelectorAll(".admin-tab").forEach(function (t) { t.classList.remove("active"); });
+      tab.classList.add("active");
+      const which = tab.getAttribute("data-tab");
+      document.getElementById("tabDashboard").style.display = which === "dashboard" ? "block" : "none";
+      document.getElementById("tabTeam").style.display = which === "team" ? "block" : "none";
+    });
+  });
+
+  /* ════════════════════════════════════════════
+     ADMIN — Team panel init (idempotent)
+     ════════════════════════════════════════════ */
+  function initAdminTeam() {
+    if (adminInited) return;
+    adminInited = true;
+
+    /* Section A — template */
+    db.collection("settings").doc("templates").get().then(function (doc) {
+      cloudTemplate = (doc.exists && doc.data().waMessage) || "";
+      const ta = document.getElementById("teamWaTpl");
+      ta.value = cloudTemplate;
+      document.getElementById("teamWaCount").textContent = ta.value.length + " characters";
+    });
+
+    /* Realtime: contacts + users → re-render team panel */
+    unsubAdminContacts = db.collection("contacts").onSnapshot(function (snap) {
+      cloudContacts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderTeam();
+    });
+    unsubAdminUsers = db.collection("users").where("role", "==", "user").onSnapshot(function (snap) {
+      cloudUsers = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderTeam();
+    });
+  }
+
+  document.getElementById("teamWaTpl").addEventListener("input", function () {
+    document.getElementById("teamWaCount").textContent = this.value.length + " characters";
+  });
+
+  document.getElementById("teamSaveTpl").addEventListener("click", function () {
+    const msg = document.getElementById("teamWaTpl").value;
+    db.collection("settings").doc("templates").set({ waMessage: msg }, { merge: true })
+      .then(function () { cloudTemplate = msg; showToast("✅ Template saved to cloud", "success"); })
+      .catch(function (e) { showToast("❌ " + e.message, "error"); });
+  });
+
+  /* Section B — sync localStorage contacts to cloud */
+  document.getElementById("teamSyncBtn").addEventListener("click", function () {
+    const local = getContacts();
+    if (local.length === 0) { showToast("No local contacts to sync", "info"); return; }
+    const btn = this; btn.disabled = true;
+
+    db.collection("contacts").get().then(function (snap) {
+      const existingEmails = {};
+      snap.forEach(function (d) {
+        const em = (d.data().email || "").trim().toLowerCase();
+        if (em) existingEmails[em] = true;
+      });
+
+      let toAdd = [];
+      for (let i = 0; i < local.length; i++) {
+        const c = local[i];
+        const em = (c.email || "").trim().toLowerCase();
+        if (!em || existingEmails[em]) continue;
+        existingEmails[em] = true;
+        toAdd.push({
+          name: c.name || "", email: c.email || "", mobile: c.mobile || "",
+          teamName: c.teamName || "", role: c.role || "", org: c.org || "",
+          regStatus: c.regStatus || "",
+          teamId: c.teamId || "", location: c.location || "",
+          domain: c.domain || "", course: c.course || "", track: c.track || "",
+          assignedTo: null, waSent: false, waSentBy: null, waSentAt: null,
+          importedAt: serverTimestamp()
+        });
+      }
+
+      if (toAdd.length === 0) { btn.disabled = false; showToast("All contacts already in cloud", "info"); return; }
+
+      /* Batched writes (max 500 each) */
+      let chain = Promise.resolve();
+      for (let i = 0; i < toAdd.length; i += 450) {
+        const chunk = toAdd.slice(i, i + 450);
+        chain = chain.then(function () {
+          const batch = db.batch();
+          chunk.forEach(function (obj) { batch.set(db.collection("contacts").doc(), obj); });
+          return batch.commit();
+        });
+      }
+      return chain.then(function () {
+        btn.disabled = false;
+        showToast("☁️ " + toAdd.length + " contacts synced to cloud", "success");
+      });
+    }).catch(function (e) { btn.disabled = false; showToast("❌ " + e.message, "error"); });
+  });
+
+  /* Section C — distribute */
+  document.getElementById("teamDistributeBtn").addEventListener("click", function () {
+    const userIds = Array.from(selectedUserIds);
+    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo; });
+    if (userIds.length === 0) { showToast("Select at least one user", "info"); return; }
+    if (unassigned.length === 0) { showToast("No unassigned contacts", "info"); return; }
+
+    const btn = this; btn.disabled = true;
+    let chain = Promise.resolve();
+    for (let i = 0; i < unassigned.length; i += 450) {
+      const chunk = unassigned.slice(i, i + 450);
+      chain = chain.then(function () {
+        const batch = db.batch();
+        chunk.forEach(function (c, j) {
+          const assignTo = userIds[(i + j) % userIds.length];
+          batch.update(db.collection("contacts").doc(c.id), { assignedTo: assignTo });
+        });
+        return batch.commit();
+      });
+    }
+    chain.then(function () {
+      btn.disabled = false;
+      selectedUserIds.clear();
+      showToast("🔀 " + unassigned.length + " contacts distributed to " + userIds.length + " users", "success");
+    }).catch(function (e) { btn.disabled = false; showToast("❌ " + e.message, "error"); });
+  });
+
+  /* Delete user (Firestore doc; revokes app access) */
+  window._deleteCloudUser = function (uid, label) {
+    showModal("Remove User", "Remove " + label + " from the team? Their assigned contacts will become unassigned. (Their Google account still exists — they just won't have a role if they sign in again.)", "Remove", "btn-danger")
+      .then(function (ok) {
+        if (!ok) return;
+        /* Unassign all contacts for this user */
+        const toUnassign = cloudContacts.filter(function (c) { return c.assignedTo === uid; });
+        let chain = Promise.resolve();
+        for (let i = 0; i < toUnassign.length; i += 450) {
+          const chunk = toUnassign.slice(i, i + 450);
+          chain = chain.then(function () {
+            const batch = db.batch();
+            chunk.forEach(function (c) {
+              batch.update(db.collection("contacts").doc(c.id), { assignedTo: null });
+            });
+            return batch.commit();
+          });
+        }
+        chain.then(function () {
+          return db.collection("users").doc(uid).delete();
+        })
+          .then(function () { showToast("User removed & contacts unassigned", "success"); })
+          .catch(function (e) { showToast("❌ " + e.message, "error"); });
+      });
+  };
+
+  /* ── Render the whole team panel from current snapshots ── */
+  function renderTeam() {
+    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo; });
+    document.getElementById("teamUnassigned").textContent = unassigned.length;
+
+    /* per-user stats */
+    const stats = {};
+    cloudUsers.forEach(function (u) { stats[u.id] = { assigned: 0, sent: 0 }; });
+    cloudContacts.forEach(function (c) {
+      if (c.assignedTo && stats[c.assignedTo]) {
+        stats[c.assignedTo].assigned++;
+        if (c.waSent) stats[c.assignedTo].sent++;
+      }
+    });
+
+    /* Section C — user picker checkboxes */
+    const picks = document.getElementById("teamUserPicks");
+    const selectAllRow = document.getElementById("selectAllRow");
+    const summaryEl = document.getElementById("distributeSummary");
+    if (cloudUsers.length === 0) {
+      picks.innerHTML = '<div class="no-users-msg">👤 No users yet — create one in the Manage Users section below.</div>';
+      selectAllRow.style.display = "none";
+      summaryEl.textContent = "No users available";
+    } else {
+      selectAllRow.style.display = "block";
+      picks.innerHTML = cloudUsers.map(function (u) {
+        const s = stats[u.id] || { assigned: 0 };
+        const checked = selectedUserIds.has(u.id) ? "checked" : "";
+        return '<label class="user-pick"><input type="checkbox" data-uid="' + u.id + '" ' + checked + '>' +
+          '<div style="flex:1"><div class="up-name">' + escHtml(u.name || u.email) + '</div>' +
+          '<div class="up-meta">' + escHtml(u.email) + '</div></div>' +
+          '<div class="up-assigned-badge">' + s.assigned + ' assigned</div></label>';
+      }).join("");
+
+      function updatePickerState() {
+        const count = selectedUserIds.size;
+        summaryEl.textContent = count === 0 ? "No users selected" : count + " user" + (count > 1 ? "s" : "") + " selected · " + unassigned.length + " contacts to distribute";
+        summaryEl.style.color = count > 0 ? "var(--green)" : "var(--muted)";
+        const allCheckbox = document.getElementById("selectAllUsers");
+        if (allCheckbox) allCheckbox.checked = count === cloudUsers.length;
+      }
+
+      picks.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          const uid = this.getAttribute("data-uid");
+          if (this.checked) selectedUserIds.add(uid); else selectedUserIds.delete(uid);
+          updatePickerState();
+        });
+      });
+
+      const allCb = document.getElementById("selectAllUsers");
+      allCb.checked = selectedUserIds.size === cloudUsers.length;
+      allCb.onchange = function () {
+        const on = this.checked;
+        cloudUsers.forEach(function (u) {
+          if (on) selectedUserIds.add(u.id); else selectedUserIds.delete(u.id);
+        });
+        picks.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.checked = on; });
+        updatePickerState();
+      };
+
+      updatePickerState();
+    }
+
+    /* Section D — progress table */
+    const pbody = document.getElementById("teamProgressBody");
+    if (cloudUsers.length === 0) {
+      pbody.innerHTML = '<tr><td colspan="5" class="sec-sub">No users yet.</td></tr>';
+    } else {
+      pbody.innerHTML = cloudUsers.map(function (u) {
+        const s = stats[u.id] || { assigned: 0, sent: 0 };
+        const pending = s.assigned - s.sent;
+        const pct = s.assigned > 0 ? Math.round((s.sent / s.assigned) * 100) : 0;
+        return "<tr><td>" + escHtml(u.name || u.email) + "</td><td>" + s.assigned +
+          "</td><td>" + s.sent + "</td><td>" + pending + "</td>" +
+          '<td><div style="display:flex;align-items:center;gap:8px"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div><span class="up-meta">' + pct + "%</span></div></td></tr>";
+      }).join("");
+    }
+
+    /* Section E — manage users table */
+    const mbody = document.getElementById("manageUsersBody");
+    if (cloudUsers.length === 0) {
+      mbody.innerHTML = '<tr><td colspan="5" class="sec-sub">No users yet.</td></tr>';
+    } else {
+      mbody.innerHTML = cloudUsers.map(function (u) {
+        const s = stats[u.id] || { assigned: 0, sent: 0 };
+        const label = (u.name || u.email).replace(/'/g, "\\'");
+        return "<tr><td>" + escHtml(u.name || "") + "</td><td>" + escHtml(u.email || "") +
+          "</td><td>" + s.assigned + "</td><td>" + s.sent + "</td>" +
+          '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:.72rem" onclick="_deleteCloudUser(\'' + u.id + '\',\'' + escHtml(label) + '\')">Delete</button></td></tr>';
+      }).join("");
+    }
+  }
+
+  /* ════════════════════════════════════════════
+     USER SCREEN (mobile)
+     ════════════════════════════════════════════ */
+  let userContacts = [];
+
+  function initUserScreen() {
+    document.getElementById("userHello").textContent = "Hello, " + currentName;
+
+    /* cache template */
+    db.collection("settings").doc("templates").get().then(function (doc) {
+      cloudTemplate = (doc.exists && doc.data().waMessage) || "";
+    });
+
+    if (unsubUserContacts) unsubUserContacts();
+    unsubUserContacts = db.collection("contacts")
+      .where("assignedTo", "==", currentUser.uid)
+      .onSnapshot(function (snap) {
+        userContacts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        renderUserScreen();
+      });
+  }
+
+  document.querySelectorAll(".user-tab").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      document.querySelectorAll(".user-tab").forEach(function (t) { t.classList.remove("active"); });
+      tab.classList.add("active");
+      userFilter = tab.getAttribute("data-utab");
+      renderUserScreen();
+    });
+  });
+
+  function renderUserScreen() {
+    const total = userContacts.length;
+    const sent = userContacts.filter(function (c) { return c.waSent; }).length;
+    const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+    document.getElementById("userSent").textContent = sent;
+    document.getElementById("userTotal").textContent = total;
+    document.getElementById("userBar").style.width = pct + "%";
+
+    let list = userContacts;
+    if (userFilter === "pending") list = userContacts.filter(function (c) { return !c.waSent; });
+    else if (userFilter === "sent") list = userContacts.filter(function (c) { return c.waSent; });
+
+    const wrap = document.getElementById("userList");
+    if (list.length === 0) { wrap.innerHTML = '<div class="user-empty">No contacts here.</div>'; return; }
+
+    const waIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.512 5.26l-.999 3.648 3.736-.979zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>';
+
+    wrap.innerHTML = list.map(function (c) {
+      const action = c.waSent
+        ? '<div class="sent-badge">✓✓ Sent</div>'
+        : '<button class="wa-send-btn" data-id="' + c.id + '">' + waIcon + ' Send Message</button>';
+      return '<div class="contact-card">' +
+        '<div class="cc-name">' + escHtml(c.name || "") + "</div>" +
+        (c.org ? '<div class="cc-org">' + escHtml(c.org) + "</div>" : "") +
+        (c.mobile ? '<div class="cc-mobile">' + escHtml(c.mobile) + "</div>" : "") +
+        action + "</div>";
+    }).join("");
+
+    wrap.querySelectorAll(".wa-send-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () { sendUserWa(this.getAttribute("data-id")); });
+    });
+  }
+
+  function sendUserWa(id) {
+    const c = userContacts.find(function (x) { return x.id === id; });
+    if (!c || c.waSent) return;
+
+    const msg = (cloudTemplate || "").replace(/\{name\}/gi, c.name || "");
+    const mobile = (c.mobile || "").replace(/[^0-9+]/g, "").replace(/^\+/, "");
+    window.open("https://wa.me/" + encodeURIComponent(mobile) + "?text=" + encodeURIComponent(msg), "_blank");
+
+    db.collection("contacts").doc(id).update({
+      waSent: true,
+      waSentAt: serverTimestamp(),
+      waSentBy: currentUser.uid
+    }).catch(function (e) { showToast("❌ " + e.message, "error"); });
+    /* onSnapshot re-renders the card + progress automatically */
+  }
+
+  /* Start on the login screen until auth resolves */
+  showScreen("login");
+})();
+</script>
+</body>
+</html>
