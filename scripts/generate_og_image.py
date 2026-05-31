@@ -6,11 +6,11 @@ def generate_og_image():
     canvas_height = 630
     canvas = Image.new("RGBA", (canvas_width, canvas_height), (255, 255, 255, 255))
     
-    # 2. Open the source logo (600x600 black logo with transparent background)
-    logo = Image.open("public/og-image.png")
+    # 2. Open the source logo (original black logo with transparent background)
+    logo = Image.open("Xinity Logo black No background.png")
     
-    # 3. Resize logo to 400x400 to fit nicely with padding
-    logo_size = 400
+    # 3. Resize logo to 550x550 to make it larger on the canvas
+    logo_size = 550
     logo_resized = logo.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
     
     # 4. Center the logo on the canvas
@@ -20,10 +20,9 @@ def generate_og_image():
     # 5. Paste the logo onto the canvas using its alpha channel as a mask
     canvas.paste(logo_resized, (x, y), logo_resized)
     
-    # 6. Save as PNG and JPEG (some tools prefer JPEG)
-    # Save as PNG with compression
+    # 6. Save as PNG
     canvas.save("public/og-image.png", "PNG", optimize=True)
-    print("Open Graph image generated successfully at public/og-image.png (1200x630)")
+    print("Open Graph image generated successfully at public/og-image.png (1200x630) with logo size 550")
 
 if __name__ == "__main__":
     generate_og_image()
