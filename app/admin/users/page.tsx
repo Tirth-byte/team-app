@@ -1,0 +1,278 @@
+"use client";
+export const dynamic = "force-dynamic";
+
+import { DM_Sans } from "next/font/google";
+import Link from "next/link";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { getAuth } from "@/lib/firebase";
+import {
+  type AppUser,
+  type Contact,
+  subscribeContacts,
+  subscribeUsers,
+} from "@/lib/db";
+
+const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"] });
+
+/** Get the current user's Firebase ID token for authenticating API calls. */
+async function authHeader(): Promise<HeadersInit> {
+  const token = await getAuth().currentUser?.getIdToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export default function AdminUsersPage() {
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Create form state
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // Delete modal state
+  const [pendingDelete, setPendingDelete] = useState<AppUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const unsubUsers = subscribeUsers(setUsers);
+    const unsubContacts = subscribeContacts(setContacts);
+    return () => {
+      unsubUsers();
+      unsubContacts();
+    };
+  }, []);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  // Per-user assigned / sent counts.
+  const stats = useMemo(() => {
+    const map: Record<string, { assigned: number; sent: number }> = {};
+    for (const u of users) map[u.id] = { assigned: 0, sent: 0 };
+    for (const c of contacts) {
+      if (c.assignedTo && map[c.assignedTo]) {
+        map[c.assignedTo].assigned += 1;
+        if (c.waSent) map[c.assignedTo].sent += 1;
+      }
+    }
+    return map;
+  }, [users, contacts]);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to create user.");
+      showToast(`User "${name}" created`);
+      setName("");
+      setEmail("");
+      setPassword("");
+      // Realtime subscription refreshes the table automatically.
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to create user.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/users/${pendingDelete.id}`, {
+        method: "DELETE",
+        headers: { ...(await authHeader()) },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete user.");
+      showToast(`User "${pendingDelete.name || pendingDelete.email}" deleted`);
+      setPendingDelete(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete user.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const inputClass =
+    "w-full rounded-lg border border-[#2a2f45] bg-[#0f1117] px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition focus:border-[#4f8ef7] focus:ring-1 focus:ring-[#4f8ef7] disabled:opacity-60";
+
+  return (
+    <ProtectedRoute>
+      <div className={`${dmSans.className} min-h-screen bg-[#0f1117] text-gray-200`}>
+        {/* Header */}
+        <header className="border-b border-[#2a2f45]">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin"
+                className="rounded-lg border border-[#2a2f45] px-3 py-1.5 text-sm text-gray-300 transition hover:bg-[#181c27] hover:text-white"
+              >
+                ← Back
+              </Link>
+              <h1 className="text-lg font-bold text-white">Users</h1>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
+          {/* Create user */}
+          <section className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6">
+            <h2 className="mb-4 text-base font-bold text-white">Create User</h2>
+            <form
+              onSubmit={handleCreate}
+              className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+            >
+              <input
+                type="text"
+                required
+                placeholder="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={creating}
+                className={inputClass}
+              />
+              <input
+                type="email"
+                required
+                placeholder="Email"
+                autoComplete="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={creating}
+                className={inputClass}
+              />
+              <input
+                type="password"
+                required
+                minLength={6}
+                placeholder="Password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={creating}
+                className={inputClass}
+              />
+              <div className="sm:col-span-3">
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {creating ? "Creating…" : "Create User"}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          {/* Users table */}
+          <section className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6">
+            <h2 className="mb-4 text-base font-bold text-white">All Users</h2>
+            {users.length === 0 ? (
+              <p className="text-sm text-gray-500">No users yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[#2a2f45] text-xs uppercase tracking-wide text-gray-500">
+                      <th className="py-2 pr-4 font-medium">Name</th>
+                      <th className="py-2 pr-4 font-medium">Email</th>
+                      <th className="py-2 pr-4 font-medium">Assigned</th>
+                      <th className="py-2 pr-4 font-medium">Sent</th>
+                      <th className="py-2 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr
+                        key={u.id}
+                        className="border-b border-[#2a2f45]/60 last:border-0"
+                      >
+                        <td className="py-3 pr-4 text-white">{u.name}</td>
+                        <td className="py-3 pr-4 text-gray-300">{u.email}</td>
+                        <td className="py-3 pr-4 text-gray-300">
+                          {stats[u.id]?.assigned ?? 0}
+                        </td>
+                        <td className="py-3 pr-4 text-gray-300">
+                          {stats[u.id]?.sent ?? 0}
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={() => setPendingDelete(u)}
+                            className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/10"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </main>
+
+        {/* Delete confirm modal */}
+        {pendingDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="w-full max-w-sm rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6 shadow-xl">
+              <h3 className="text-base font-bold text-white">Delete user?</h3>
+              <p className="mt-2 text-sm text-gray-400">
+                This permanently removes{" "}
+                <span className="font-medium text-white">
+                  {pendingDelete.name || pendingDelete.email}
+                </span>{" "}
+                from authentication and the database. This cannot be undone.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setPendingDelete(null)}
+                  disabled={deleting}
+                  className="rounded-lg border border-[#2a2f45] px-4 py-2 text-sm text-gray-300 transition hover:bg-[#0f1117] disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toast */}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm text-white shadow-xl">
+            {toast}
+          </div>
+        )}
+      </div>
+    </ProtectedRoute>
+  );
+}
