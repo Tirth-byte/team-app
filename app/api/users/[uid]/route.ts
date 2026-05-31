@@ -27,16 +27,6 @@ export async function DELETE(request: Request) {
 
     const db = getAdminDb();
     
-    // Get all other active users to distribute pending tasks to them
-    const otherUsersSnapshot = await db
-      .collection("users")
-      .where("role", "==", "user")
-      .get();
-    
-    const otherUserIds = otherUsersSnapshot.docs
-      .map((doc) => doc.id)
-      .filter((id) => id !== uid);
-
     // Find pending contacts/tasks assigned to this user
     const contactsSnapshot = await db
       .collection("contacts")
@@ -46,20 +36,9 @@ export async function DELETE(request: Request) {
 
     if (!contactsSnapshot.empty) {
       const batch = db.batch();
-      const docs = contactsSnapshot.docs;
-      
-      if (otherUserIds.length > 0) {
-        // Distribute round-robin to other users
-        docs.forEach((doc, index) => {
-          const assignedTo = otherUserIds[index % otherUserIds.length];
-          batch.update(doc.ref, { assignedTo });
-        });
-      } else {
-        // No other users available, just unassign them
-        docs.forEach((doc) => {
-          batch.update(doc.ref, { assignedTo: null });
-        });
-      }
+      contactsSnapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { assignedTo: null });
+      });
       await batch.commit();
     }
 

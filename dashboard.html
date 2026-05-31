@@ -2432,55 +2432,29 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
 
   /* Delete user (Firestore doc; revokes app access) */
   window._deleteCloudUser = function (uid, label) {
-    showModal("Remove User", "Remove " + label + " from the team? Their pending tasks will be distributed equally to other active team members, and completed tasks will remain. (Their Google account still exists — they just won't have a role if they sign in again.)", "Remove", "btn-danger")
+    showModal("Remove User", "Remove " + label + " from the team? Their pending tasks will become unassigned, and completed tasks will remain. (Their Google account still exists — they just won't have a role if they sign in again.)", "Remove", "btn-danger")
       .then(function (ok) {
         if (!ok) return;
 
-        const otherUsers = cloudUsers.filter(function (u) { return u.id !== uid; });
-        const otherUserIds = otherUsers.map(function (u) { return u.id; });
-
         /* Find pending contacts for this user */
-        const toRedistribute = cloudContacts.filter(function (c) { return c.assignedTo === uid && !c.waSent; });
+        const toUnassign = cloudContacts.filter(function (c) { return c.assignedTo === uid && !c.waSent; });
         let chain = Promise.resolve();
 
-        if (otherUserIds.length > 0) {
-          // Distribute pending tasks round-robin to remaining users
-          for (let i = 0; i < toRedistribute.length; i += 450) {
-            const chunk = toRedistribute.slice(i, i + 450);
-            const startIndex = i;
-            chain = chain.then(function () {
-              const batch = db.batch();
-              chunk.forEach(function (c, idx) {
-                const assignTo = otherUserIds[(startIndex + idx) % otherUserIds.length];
-                batch.update(db.collection("contacts").doc(c.id), { assignedTo: assignTo });
-              });
-              return batch.commit();
+        for (let i = 0; i < toUnassign.length; i += 450) {
+          const chunk = toUnassign.slice(i, i + 450);
+          chain = chain.then(function () {
+            const batch = db.batch();
+            chunk.forEach(function (c) {
+              batch.update(db.collection("contacts").doc(c.id), { assignedTo: null });
             });
-          }
-        } else {
-          // No other users, just unassign
-          for (let i = 0; i < toRedistribute.length; i += 450) {
-            const chunk = toRedistribute.slice(i, i + 450);
-            chain = chain.then(function () {
-              const batch = db.batch();
-              chunk.forEach(function (c) {
-                batch.update(db.collection("contacts").doc(c.id), { assignedTo: null });
-              });
-              return batch.commit();
-            });
-          }
+            return batch.commit();
+          });
         }
 
         chain.then(function () {
           return db.collection("users").doc(uid).delete();
         })
-          .then(function () {
-            if (otherUserIds.length > 0) {
-              showToast("User removed & pending tasks distributed to other users", "success");
-            } else {
-              showToast("User removed & contacts unassigned", "success");
-            }
-          })
+          .then(function () { showToast("User removed & pending tasks unassigned", "success"); })
           .catch(function (e) { showToast("❌ " + e.message, "error"); });
       });
   };
