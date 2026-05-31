@@ -23,6 +23,7 @@ import {
   saveTemplate,
   subscribeContacts,
   subscribeUsers,
+  restoreBackup,
 } from "@/lib/db";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"] });
@@ -144,6 +145,9 @@ export default function AdminPage() {
 
           {/* SECTION 5 — Team progress */}
           <ProgressSection users={users} contacts={contacts} />
+
+          {/* SECTION 6 — Team Backup & Restore */}
+          <BackupSection onToast={showToast} users={users} contacts={contacts} />
         </main>
 
         {/* Toast */}
@@ -463,6 +467,123 @@ function ProgressSection({
           </table>
         </div>
       )}
+    </Card>
+  );
+}
+
+function BackupSection({
+  onToast,
+  users,
+  contacts,
+}: {
+  onToast: (m: string) => void;
+  users: AppUser[];
+  contacts: Contact[];
+}) {
+  const [restoring, setRestoring] = useState(false);
+
+  async function handleBackupDownload() {
+    try {
+      const tpl = await getTemplate();
+      const backupData = {
+        exportedAt: new Date().toISOString(),
+        version: 2,
+        cloud: {
+          contacts: contacts.map((c) => ({
+            ...c,
+            importedAt: c.importedAt?.toISOString(),
+            waSentAt: c.waSentAt?.toISOString(),
+          })),
+          users: users.map((u) => ({
+            ...u,
+            createdAt: u.createdAt?.toISOString(),
+          })),
+          waTemplate: tpl?.waMessage ?? "",
+        },
+      };
+
+      const json = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const d = new Date();
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(d.getDate()).padStart(2, "0")}`;
+      a.download = `hackathon-team-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onToast("Backup downloaded successfully");
+    } catch (err) {
+      onToast(
+        err instanceof Error ? `Backup failed: ${err.message}` : "Backup failed"
+      );
+    }
+  }
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoring(true);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const data = JSON.parse(text);
+
+        if (!data.cloud && !data.contacts) {
+          throw new Error("Invalid backup format: missing backup data.");
+        }
+
+        const count = await restoreBackup(data);
+        onToast(`Backup restored: ${count} new contacts and settings updated.`);
+      } catch (err) {
+        onToast(
+          err instanceof Error
+            ? `Restore failed: ${err.message}`
+            : "Restore failed"
+        );
+      } finally {
+        setRestoring(false);
+        e.target.value = "";
+      }
+    };
+    reader.onerror = () => {
+      onToast("Failed to read backup file");
+      setRestoring(false);
+    };
+    reader.readAsText(file);
+  }
+
+  return (
+    <Card>
+      <SectionTitle>Team Backup & Restore</SectionTitle>
+      <div className="flex flex-wrap gap-4">
+        <button
+          onClick={handleBackupDownload}
+          className="rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm font-medium text-gray-300 transition hover:bg-[#0f1117] hover:text-white"
+        >
+          Download Backup
+        </button>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5]">
+          {restoring ? "Restoring…" : "Restore Backup"}
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleFile}
+            disabled={restoring}
+            className="hidden"
+          />
+        </label>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">
+        Download a complete backup of contacts, users, and WhatsApp template, or restore a previously saved team backup to Firestore.
+      </p>
     </Card>
   );
 }

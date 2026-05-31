@@ -354,3 +354,124 @@ export async function importContacts(rows: any[]): Promise<number> {
 
   return imported;
 }
+
+// ---------------------------------------------------------------------------
+// Backup & Restore
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBackupDate(value: any): Date {
+  if (!value) return new Date();
+  if (typeof value === "string") return new Date(value);
+  if (value.seconds !== undefined) return new Date(value.seconds * 1000);
+  if (value instanceof Date) return value;
+  return new Date();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBackupDateOrNull(value: any): Date | null {
+  if (!value) return null;
+  if (typeof value === "string") return new Date(value);
+  if (value.seconds !== undefined) return new Date(value.seconds * 1000);
+  if (value instanceof Date) return value;
+  return null;
+}
+
+/**
+ * Restore contacts, users, and templates from backup data to Firestore.
+ * Deduplicates contacts by email.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function restoreBackup(data: any): Promise<number> {
+  const db = getDb();
+
+  // 1. Restore template
+  const waTemplate = data.cloud?.waTemplate || data.templates?.waMessage || "";
+  if (waTemplate) {
+    await saveTemplate(waTemplate);
+  }
+
+  // 2. Restore users
+  const users = data.cloud?.users || [];
+  if (users.length > 0) {
+    let userBatch = writeBatch(db);
+    let userOps = 0;
+    for (const u of users) {
+      if (u.id) {
+        userBatch.set(
+          doc(db, USERS, u.id),
+          {
+            name: u.name || "",
+            email: u.email || "",
+            role: u.role || "user",
+            createdAt: parseBackupDate(u.createdAt),
+          },
+          { merge: true }
+        );
+        userOps++;
+        if (userOps === BATCH_LIMIT) {
+          await userBatch.commit();
+          userBatch = writeBatch(db);
+          userOps = 0;
+        }
+      }
+    }
+    if (userOps > 0) {
+      await userBatch.commit();
+    }
+  }
+
+  // 3. Restore contacts
+  const contacts = data.cloud?.contacts || data.contacts || [];
+  let importedCount = 0;
+  if (contacts.length > 0) {
+    const existing = await getContacts();
+    const seen = new Set(
+      existing
+        .map((c) => c.email.trim().toLowerCase())
+        .filter((email) => email.length > 0)
+    );
+
+    let batch = writeBatch(db);
+    let opsInBatch = 0;
+
+    for (const c of contacts) {
+      const email = String(c.email ?? "").trim();
+      const key = email.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+
+      const ref = doc(collection(db, CONTACTS));
+      batch.set(ref, {
+        name: String(c.name ?? ""),
+        email,
+        mobile: String(c.mobile ?? ""),
+        teamName: String(c.teamName ?? ""),
+        role: String(c.role ?? ""),
+        org: String(c.org ?? ""),
+        regStatus: String(c.regStatus ?? ""),
+        assignedTo: c.assignedTo || null,
+        waSent: c.waSent ?? c.wa_sent ?? false,
+        waSentAt: parseBackupDateOrNull(c.waSentAt),
+        waSentBy: c.waSentBy || null,
+        importedAt: parseBackupDate(c.importedAt),
+      });
+
+      importedCount++;
+      opsInBatch++;
+
+      if (opsInBatch === BATCH_LIMIT) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opsInBatch = 0;
+      }
+    }
+
+    if (opsInBatch > 0) {
+      await batch.commit();
+    }
+  }
+
+  return importedCount;
+}
+

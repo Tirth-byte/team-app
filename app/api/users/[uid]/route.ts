@@ -25,7 +25,24 @@ export async function DELETE(request: Request) {
       if (code !== "auth/user-not-found") throw err;
     }
 
-    await getAdminDb().collection("users").doc(uid).delete();
+    const db = getAdminDb();
+    
+    // Unassign pending contacts/tasks assigned to this user
+    const contactsSnapshot = await db
+      .collection("contacts")
+      .where("assignedTo", "==", uid)
+      .where("waSent", "==", false)
+      .get();
+
+    if (!contactsSnapshot.empty) {
+      const batch = db.batch();
+      contactsSnapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { assignedTo: null });
+      });
+      await batch.commit();
+    }
+
+    await db.collection("users").doc(uid).delete();
 
     return NextResponse.json({ ok: true });
   } catch (err) {

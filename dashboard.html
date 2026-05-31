@@ -315,6 +315,8 @@ tbody tr:hover{background:rgba(79,142,247,.06);border-left-color:var(--accent)}
 .badge-orange{background:rgba(249,115,22,.12);color:var(--orange)}
 .badge-blue{background:rgba(79,142,247,.12);color:var(--accent)}
 .badge-muted{background:rgba(123,130,160,.1);color:var(--muted)}
+.badge-btn{cursor:pointer;border:none;font-family:inherit;transition:opacity var(--transition)}
+.badge-btn:hover{opacity:.8}
 .wa-btn{
   display:inline-flex;align-items:center;gap:5px;
   padding:5px 12px;border-radius:var(--radius-sm);font-size:.75rem;
@@ -1296,8 +1298,8 @@ function renderTable() {
     }
 
     var emailCell = c.email_sent
-      ? '<span class="badge badge-green">✓ Sent</span>'
-      : '<span class="badge badge-muted">Pending</span>';
+      ? '<button class="badge badge-green badge-btn" data-email-toggle="' + escAttr(c._id) + '">✓ Sent</button>'
+      : '<button class="badge badge-muted badge-btn" data-email-toggle="' + escAttr(c._id) + '">Pending</button>';
 
     html += '<tr>'
       + '<td>' + (i + 1) + '</td>'
@@ -1389,6 +1391,63 @@ function handleWaSend(id, isResend) {
     saveContacts(contacts);
     renderStats();
     applyFilters();
+
+    /* Also update Firestore if this contact exists in cloud */
+    if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
+      var email = (c.email || "").trim().toLowerCase();
+      if (email) {
+        var cloudId = null;
+        for (var i = 0; i < cloudContacts.length; i++) {
+          if ((cloudContacts[i].email || "").trim().toLowerCase() === email) {
+            cloudId = cloudContacts[i].id;
+            break;
+          }
+        }
+        if (cloudId) {
+          firebase.firestore().collection("contacts").doc(cloudId).update({
+            waSent: true,
+            waSentAt: firebase.firestore.FieldValue.serverTimestamp(),
+            waSentBy: firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
+          }).catch(function(err) { console.error("Error updating cloud waSent:", err); });
+        }
+      }
+    }
+  }
+}
+
+function handleEmailToggle(id) {
+  var contacts = getContacts();
+  var idx = -1;
+  for (var i = 0; i < contacts.length; i++) {
+    if (contacts[i]._id === id) { idx = i; break; }
+  }
+  if (idx === -1) return;
+
+  var currentStatus = contacts[idx].email_sent || false;
+  var nextStatus = !currentStatus;
+  contacts[idx].email_sent = nextStatus;
+  saveContacts(contacts);
+  renderStats();
+  applyFilters();
+
+  /* Also update Firestore if this contact exists in cloud */
+  if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
+    var email = (contacts[idx].email || "").trim().toLowerCase();
+    if (email) {
+      var cloudId = null;
+      for (var k = 0; k < cloudContacts.length; k++) {
+        if ((cloudContacts[k].email || "").trim().toLowerCase() === email) {
+          cloudId = cloudContacts[k].id;
+          break;
+        }
+      }
+      if (cloudId) {
+        firebase.firestore().collection("contacts").doc(cloudId).update({
+          emailSent: nextStatus,
+          emailSentAt: nextStatus ? firebase.firestore.FieldValue.serverTimestamp() : null
+        }).catch(function(err) { console.error("Error updating cloud emailSent:", err); });
+      }
+    }
   }
 }
 
@@ -1443,6 +1502,34 @@ function handleBulkEmail() {
             renderStats();
             applyFilters();
             showToast("✅ " + count + " emails marked as sent", "success");
+
+            /* Also update Firestore if those contacts exist in cloud */
+            if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
+              var db = firebase.firestore();
+              var batch = db.batch();
+              var cloudByEmail = {};
+              for (var k = 0; k < cloudContacts.length; k++) {
+                var em = (cloudContacts[k].email || "").trim().toLowerCase();
+                if (em) cloudByEmail[em] = cloudContacts[k].id;
+              }
+
+              var updatedCount = 0;
+              for (var p = 0; p < pending.length; p++) {
+                var em = (pending[p].email || "").trim().toLowerCase();
+                var id = cloudByEmail[em];
+                if (id) {
+                  batch.update(db.collection("contacts").doc(id), {
+                    emailSent: true,
+                    emailSentAt: firebase.firestore.FieldValue.serverTimestamp()
+                  });
+                  updatedCount++;
+                }
+              }
+
+              if (updatedCount > 0) {
+                batch.commit().catch(function(err) { console.error("Error committing email bulk update:", err); });
+              }
+            }
           }
         });
       }, 400);
@@ -1510,34 +1597,57 @@ function handleCSVImport(file) {
 }
 
 /* ================================================================
-   EXPORT MEMORY
+   EXPORT MEMORY (includes cloud data)
    ================================================================ */
 function handleExportMemory() {
-  var data = {
-    exportedAt: new Date().toISOString(),
-    version: 1,
-    contacts: getContacts(),
-    templates: {
-      waMessage: localStorage.getItem(STORAGE_WA) || "",
-      emailSubject: localStorage.getItem(STORAGE_ESUBJ) || "",
-      emailBody: localStorage.getItem(STORAGE_EBODY) || ""
-    }
-  };
-  var json = JSON.stringify(data, null, 2);
-  var blob = new Blob([json], { type: "application/json" });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement("a");
-  a.href = url;
-  var d = new Date();
-  var dateStr = d.getFullYear() + "-"
-    + String(d.getMonth() + 1).padStart(2, "0") + "-"
-    + String(d.getDate()).padStart(2, "0");
-  a.download = "hackathon-backup-" + dateStr + ".json";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast("✅ Memory exported successfully", "success");
+  /* Collect cloud data if available */
+  var cloudData = { contacts: [], users: [], waTemplate: "" };
+  var hasCloud = typeof firebase !== 'undefined' && firebase.firestore;
+
+  function doExport() {
+    var data = {
+      exportedAt: new Date().toISOString(),
+      version: 2,
+      contacts: getContacts(),
+      templates: {
+        waMessage: localStorage.getItem(STORAGE_WA) || "",
+        emailSubject: localStorage.getItem(STORAGE_ESUBJ) || "",
+        emailBody: localStorage.getItem(STORAGE_EBODY) || ""
+      },
+      cloud: cloudData
+    };
+    var json = JSON.stringify(data, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    var d = new Date();
+    var dateStr = d.getFullYear() + "-"
+      + String(d.getMonth() + 1).padStart(2, "0") + "-"
+      + String(d.getDate()).padStart(2, "0");
+    a.download = "hackathon-backup-" + dateStr + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("✅ Full backup exported (local + cloud)", "success");
+  }
+
+  if (hasCloud) {
+    var db = firebase.firestore();
+    Promise.all([
+      db.collection("contacts").get(),
+      db.collection("users").get(),
+      db.collection("settings").doc("templates").get()
+    ]).then(function(results) {
+      cloudData.contacts = results[0].docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+      cloudData.users = results[1].docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+      cloudData.waTemplate = (results[2].exists && results[2].data().waMessage) || "";
+      doExport();
+    }).catch(function() { doExport(); });
+  } else {
+    doExport();
+  }
 }
 
 /* ================================================================
@@ -1613,6 +1723,108 @@ function handleImportMemory(file) {
         if (data.templates.emailSubject) localStorage.setItem(STORAGE_ESUBJ, data.templates.emailSubject);
         if (data.templates.emailBody) localStorage.setItem(STORAGE_EBODY, data.templates.emailBody);
         loadTemplates();
+      }
+
+      /* Restore cloud data if Firestore is available and backup contains cloud data */
+      if (data.cloud && typeof firebase !== 'undefined' && firebase.firestore) {
+        var db = firebase.firestore();
+        
+        // A. Restore Cloud template
+        if (data.cloud.waTemplate) {
+          db.collection("settings").doc("templates").set({ waMessage: data.cloud.waTemplate }, { merge: true })
+            .catch(function(err) { console.error("Error restoring cloud template:", err); });
+        }
+
+        // B. Restore Cloud users
+        if (data.cloud.users && Array.isArray(data.cloud.users)) {
+          data.cloud.users.forEach(function(u) {
+            if (u.id) {
+              var createdAtVal = firebase.firestore.FieldValue.serverTimestamp();
+              if (u.createdAt) {
+                if (typeof u.createdAt === 'string') {
+                  createdAtVal = new Date(u.createdAt);
+                } else if (u.createdAt.seconds !== undefined) {
+                  createdAtVal = new firebase.firestore.Timestamp(u.createdAt.seconds, u.createdAt.nanoseconds || 0);
+                }
+              }
+              db.collection("users").doc(u.id).set({
+                name: u.name || "",
+                email: u.email || "",
+                role: u.role || "user",
+                createdAt: createdAtVal
+              }, { merge: true }).catch(function(err) { console.error("Error restoring cloud user:", err); });
+            }
+          });
+        }
+
+        // C. Restore Cloud contacts
+        if (data.cloud.contacts && Array.isArray(data.cloud.contacts)) {
+          db.collection("contacts").get().then(function(snap) {
+            var cloudEmails = new Set();
+            snap.forEach(function(d) {
+              var em = (d.data().email || "").trim().toLowerCase();
+              if (em) cloudEmails.add(em);
+            });
+
+            var batch = db.batch();
+            var batchOps = 0;
+
+            data.cloud.contacts.forEach(function(c) {
+              var em = (c.email || "").trim().toLowerCase();
+              if (em && !cloudEmails.has(em)) {
+                var docRef = db.collection("contacts").doc();
+                
+                var importedAtVal = firebase.firestore.FieldValue.serverTimestamp();
+                if (c.importedAt) {
+                  if (typeof c.importedAt === 'string') importedAtVal = new Date(c.importedAt);
+                  else if (c.importedAt.seconds !== undefined) importedAtVal = new firebase.firestore.Timestamp(c.importedAt.seconds, c.importedAt.nanoseconds || 0);
+                }
+
+                var waSentAtVal = null;
+                if (c.waSentAt) {
+                  if (typeof c.waSentAt === 'string') waSentAtVal = new Date(c.waSentAt);
+                  else if (c.waSentAt.seconds !== undefined) waSentAtVal = new firebase.firestore.Timestamp(c.waSentAt.seconds, c.waSentAt.nanoseconds || 0);
+                }
+
+                var emailSentAtVal = null;
+                if (c.emailSentAt) {
+                  if (typeof c.emailSentAt === 'string') emailSentAtVal = new Date(c.emailSentAt);
+                  else if (c.emailSentAt.seconds !== undefined) emailSentAtVal = new firebase.firestore.Timestamp(c.emailSentAt.seconds, c.emailSentAt.nanoseconds || 0);
+                }
+
+                batch.set(docRef, {
+                  name: c.name || "",
+                  email: c.email || "",
+                  mobile: c.mobile || "",
+                  teamName: c.teamName || "",
+                  role: c.role || "",
+                  org: c.org || "",
+                  regStatus: c.regStatus || "",
+                  assignedTo: c.assignedTo || null,
+                  waSent: c.waSent || c.wa_sent || false,
+                  waSentBy: c.waSentBy || null,
+                  waSentAt: waSentAtVal,
+                  emailSent: c.emailSent || c.email_sent || false,
+                  emailSentAt: emailSentAtVal,
+                  importedAt: importedAtVal
+                });
+
+                cloudEmails.add(em);
+                batchOps++;
+
+                if (batchOps === 450) {
+                  batch.commit().catch(function(err) { console.error("Error committing restore batch:", err); });
+                  batch = db.batch();
+                  batchOps = 0;
+                }
+              }
+            });
+
+            if (batchOps > 0) {
+              batch.commit().catch(function(err) { console.error("Error committing final restore batch:", err); });
+            }
+          }).catch(function(err) { console.error("Error fetching cloud contacts for restore:", err); });
+        }
       }
 
       renderStats();
@@ -1788,6 +2000,11 @@ document.addEventListener("DOMContentLoaded", function() {
     var resendBtn = e.target.closest("[data-wa-resend]");
     if (resendBtn) {
       handleWaSend(resendBtn.getAttribute("data-wa-resend"), true);
+      return;
+    }
+    var emailBtn = e.target.closest("[data-email-toggle]");
+    if (emailBtn) {
+      handleEmailToggle(emailBtn.getAttribute("data-email-toggle"));
       return;
     }
   });
@@ -2029,19 +2246,26 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
       .catch(function (e) { showToast("❌ " + e.message, "error"); });
   });
 
-  /* Section B — sync localStorage contacts to cloud */
+  /* Section B — bidirectional sync (push new contacts to cloud + pull waSent status back) */
   document.getElementById("teamSyncBtn").addEventListener("click", function () {
     const local = getContacts();
-    if (local.length === 0) { showToast("No local contacts to sync", "info"); return; }
     const btn = this; btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Syncing…';
 
     db.collection("contacts").get().then(function (snap) {
-      const existingEmails = {};
+      const cloudByEmail = {};
+      const cloudDocsByEmail = {};
       snap.forEach(function (d) {
-        const em = (d.data().email || "").trim().toLowerCase();
-        if (em) existingEmails[em] = true;
+        const data = d.data();
+        const em = (data.email || "").trim().toLowerCase();
+        if (em) {
+          cloudByEmail[em] = data;
+          cloudDocsByEmail[em] = d;
+        }
       });
 
+      /* ── PUSH: local → cloud (new contacts only) ── */
+      const existingEmails = Object.assign({}, cloudByEmail);
       let toAdd = [];
       for (let i = 0; i < local.length; i++) {
         const c = local[i];
@@ -2054,28 +2278,129 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
           regStatus: c.regStatus || "",
           teamId: c.teamId || "", location: c.location || "",
           domain: c.domain || "", course: c.course || "", track: c.track || "",
-          assignedTo: null, waSent: false, waSentBy: null, waSentAt: null,
+          assignedTo: null,
+          waSent: c.wa_sent || false,
+          waSentBy: c.wa_sent ? (auth.currentUser ? auth.currentUser.uid : null) : null,
+          waSentAt: c.wa_sent ? serverTimestamp() : null,
+          emailSent: c.email_sent || false,
+          emailSentAt: c.email_sent ? serverTimestamp() : null,
           importedAt: serverTimestamp()
         });
       }
 
-      if (toAdd.length === 0) { btn.disabled = false; showToast("All contacts already in cloud", "info"); return; }
+      /* ── Bidirectional Sync & Pull Missing ── */
+      let localUpdated = 0;
+      let cloudUpdated = 0;
+      const localArr = getContacts();
+      const batch = db.batch();
+      let batchOps = 0;
 
-      /* Batched writes (max 500 each) */
-      let chain = Promise.resolve();
+      for (let i = 0; i < localArr.length; i++) {
+        const em = (localArr[i].email || "").trim().toLowerCase();
+        const cloud = cloudByEmail[em];
+        const docRef = cloudDocsByEmail[em] ? cloudDocsByEmail[em].ref : null;
+        if (cloud && docRef) {
+          let needsCloudUpdate = false;
+          let cloudUpdateObj = {};
+
+          // Sync WhatsApp status
+          if (cloud.waSent && !localArr[i].wa_sent) {
+            localArr[i].wa_sent = true;
+            localUpdated++;
+          } else if (!cloud.waSent && localArr[i].wa_sent) {
+            cloudUpdateObj.waSent = true;
+            cloudUpdateObj.waSentAt = serverTimestamp();
+            cloudUpdateObj.waSentBy = auth.currentUser ? auth.currentUser.uid : null;
+            needsCloudUpdate = true;
+          }
+
+          // Sync Email status
+          if (cloud.emailSent && !localArr[i].email_sent) {
+            localArr[i].email_sent = true;
+            localUpdated++;
+          } else if (!cloud.emailSent && localArr[i].email_sent) {
+            cloudUpdateObj.emailSent = true;
+            cloudUpdateObj.emailSentAt = serverTimestamp();
+            needsCloudUpdate = true;
+          }
+
+          if (needsCloudUpdate) {
+            batch.update(docRef, cloudUpdateObj);
+            batchOps++;
+            cloudUpdated++;
+          }
+        }
+      }
+
+      // Pull contacts from cloud that don't exist locally
+      const localEmails = new Set(localArr.map(function(c) { return (c.email || "").trim().toLowerCase(); }).filter(Boolean));
+      let pulledCount = 0;
+      snap.forEach(function (d) {
+        const data = d.data();
+        const em = (data.email || "").trim().toLowerCase();
+        if (em && !localEmails.has(em)) {
+          localArr.push({
+            _id: em,
+            name: data.name || "",
+            email: data.email || "",
+            mobile: data.mobile || "",
+            teamName: data.teamName || "",
+            teamId: data.teamId || "",
+            role: data.role || "",
+            org: data.org || "",
+            location: data.location || "",
+            regStatus: data.regStatus || "",
+            domain: data.domain || "",
+            course: data.course || "",
+            track: data.track || "",
+            email_sent: data.emailSent || false,
+            wa_sent: data.waSent || false,
+            imported_at: data.importedAt ? (data.importedAt.seconds ? data.importedAt.seconds * 1000 : Date.now()) : Date.now()
+          });
+          localEmails.add(em);
+          pulledCount++;
+        }
+      });
+
+      let pushChain = Promise.resolve();
+      if (batchOps > 0) {
+        pushChain = pushChain.then(function() { return batch.commit(); });
+      }
+
       for (let i = 0; i < toAdd.length; i += 450) {
         const chunk = toAdd.slice(i, i + 450);
-        chain = chain.then(function () {
-          const batch = db.batch();
-          chunk.forEach(function (obj) { batch.set(db.collection("contacts").doc(), obj); });
-          return batch.commit();
+        pushChain = pushChain.then(function () {
+          const newBatch = db.batch();
+          chunk.forEach(function (obj) { newBatch.set(db.collection("contacts").doc(), obj); });
+          return newBatch.commit();
         });
       }
-      return chain.then(function () {
+
+      return pushChain.then(function () {
+        if (localUpdated > 0 || pulledCount > 0) {
+          saveContacts(localArr);
+          renderStats();
+          applyFilters();
+        }
+
         btn.disabled = false;
-        showToast("☁️ " + toAdd.length + " contacts synced to cloud", "success");
+        btn.textContent = '⬆ Sync Contacts to Cloud';
+        
+        let msg = '';
+        if (toAdd.length > 0) msg += toAdd.length + ' contacts pushed. ';
+        if (pulledCount > 0) msg += pulledCount + ' contacts pulled. ';
+        if (localUpdated > 0) msg += localUpdated + ' statuses updated locally. ';
+        if (cloudUpdated > 0) msg += cloudUpdated + ' statuses updated in cloud. ';
+        if (toAdd.length === 0 && pulledCount === 0 && localUpdated === 0 && cloudUpdated === 0) {
+          msg = 'Everything is in sync!';
+        }
+        showToast('☁️ ' + msg.trim(), 'success');
       });
-    }).catch(function (e) { btn.disabled = false; showToast("❌ " + e.message, "error"); });
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = '⬆ Sync Contacts to Cloud';
+      showToast('❌ ' + e.message, 'error');
+    });
   });
 
   /* Section C — distribute */
@@ -2110,8 +2435,8 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
     showModal("Remove User", "Remove " + label + " from the team? Their assigned contacts will become unassigned. (Their Google account still exists — they just won't have a role if they sign in again.)", "Remove", "btn-danger")
       .then(function (ok) {
         if (!ok) return;
-        /* Unassign all contacts for this user */
-        const toUnassign = cloudContacts.filter(function (c) { return c.assignedTo === uid; });
+        /* Unassign pending contacts for this user */
+        const toUnassign = cloudContacts.filter(function (c) { return c.assignedTo === uid && !c.waSent; });
         let chain = Promise.resolve();
         for (let i = 0; i < toUnassign.length; i += 450) {
           const chunk = toUnassign.slice(i, i + 450);
