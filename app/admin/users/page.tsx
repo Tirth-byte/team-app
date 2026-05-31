@@ -116,30 +116,39 @@ export default function AdminUsersPage() {
   }
 
   const inputClass =
-    "w-full rounded-lg border border-[#2a2f45] bg-[#0f1117] px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition focus:border-[#4f8ef7] focus:ring-1 focus:ring-[#4f8ef7] disabled:opacity-60";
+    "w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none transition duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50";
 
   return (
     <ProtectedRoute>
-      <div className={`${dmSans.className} min-h-screen bg-[#0f1117] text-gray-200`}>
+      <div className={`${dmSans.className} min-h-screen bg-[#07090e] text-gray-200 antialiased relative overflow-hidden`}>
+        {/* Background ambient glows */}
+        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/5 blur-[120px] pointer-events-none z-0" />
+        <div className="absolute top-1/3 right-0 h-[600px] w-[600px] translate-x-1/3 rounded-full bg-indigo-500/5 blur-[130px] pointer-events-none z-0" />
+
         {/* Header */}
-        <header className="border-b border-[#2a2f45]">
+        <header className="relative z-10 border-b border-white/5 bg-[#07090e]/75 backdrop-blur-lg">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <Link
                 href="/admin"
-                className="rounded-lg border border-[#2a2f45] px-3 py-1.5 text-sm text-gray-300 transition hover:bg-[#181c27] hover:text-white"
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition duration-200 hover:bg-white/5 hover:text-white"
               >
-                ← Back
+                ← Dashboard
               </Link>
-              <h1 className="text-lg font-bold text-white">Users</h1>
+              <h1 className="text-lg font-bold tracking-tight text-white">Users</h1>
             </div>
+            <img
+              src="/logo.png"
+              alt="Xinity Logo"
+              className="h-9 w-auto object-contain"
+            />
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
+        <main className="relative z-10 mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
           {/* Create user */}
-          <section className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6">
-            <h2 className="mb-4 text-base font-bold text-white">Create User</h2>
+          <section className="rounded-2xl border border-white/5 bg-white/[0.02] shadow-xl p-6 hover:border-white/10 transition duration-300">
+            <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-400">Create User</h2>
             <form
               onSubmit={handleCreate}
               className="grid grid-cols-1 gap-4 sm:grid-cols-3"
@@ -178,7 +187,7 @@ export default function AdminUsersPage() {
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition duration-200 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {creating ? "Creating…" : "Create User"}
                 </button>
@@ -187,40 +196,40 @@ export default function AdminUsersPage() {
           </section>
 
           {/* Users table */}
-          <section className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6">
-            <h2 className="mb-4 text-base font-bold text-white">All Users</h2>
+          <section className="rounded-2xl border border-white/5 bg-white/[0.02] shadow-xl p-6 hover:border-white/10 transition duration-300">
+            <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-400 font-semibold">All Users</h2>
             {users.length === 0 ? (
               <p className="text-sm text-gray-500">No users yet.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead>
-                    <tr className="border-b border-[#2a2f45] text-xs uppercase tracking-wide text-gray-500">
-                      <th className="py-2 pr-4 font-medium">Name</th>
-                      <th className="py-2 pr-4 font-medium">Email</th>
-                      <th className="py-2 pr-4 font-medium">Assigned</th>
-                      <th className="py-2 pr-4 font-medium">Sent</th>
-                      <th className="py-2 font-medium text-right">Actions</th>
+                    <tr className="border-b border-white/5 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      <th className="pb-3 pr-4 font-semibold">Name</th>
+                      <th className="pb-3 pr-4 font-semibold">Email</th>
+                      <th className="pb-3 pr-4 font-semibold">Assigned</th>
+                      <th className="pb-3 pr-4 font-semibold">Sent</th>
+                      <th className="pb-3 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-white/5">
                     {users.map((u) => (
                       <tr
                         key={u.id}
-                        className="border-b border-[#2a2f45]/60 last:border-0"
+                        className="hover:bg-white/[0.01] transition-colors"
                       >
-                        <td className="py-3 pr-4 text-white">{u.name}</td>
-                        <td className="py-3 pr-4 text-gray-300">{u.email}</td>
-                        <td className="py-3 pr-4 text-gray-300">
+                        <td className="py-4 pr-4 font-medium text-white">{u.name}</td>
+                        <td className="py-4 pr-4 text-gray-400 font-mono text-xs">{u.email}</td>
+                        <td className="py-4 pr-4 text-gray-300 font-medium">
                           {stats[u.id]?.assigned ?? 0}
                         </td>
-                        <td className="py-3 pr-4 text-gray-300">
+                        <td className="py-4 pr-4 text-gray-300 font-medium">
                           {stats[u.id]?.sent ?? 0}
                         </td>
-                        <td className="py-3 text-right">
+                        <td className="py-4 text-right">
                           <button
                             onClick={() => setPendingDelete(u)}
-                            className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/10"
+                            className="rounded-xl border border-red-500/25 px-4 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500/10 hover:border-red-500/40 active:scale-95"
                           >
                             Delete
                           </button>
@@ -236,12 +245,12 @@ export default function AdminUsersPage() {
 
         {/* Delete confirm modal */}
         {pendingDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-            <div className="w-full max-w-sm rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6 shadow-xl">
-              <h3 className="text-base font-bold text-white">Delete user?</h3>
-              <p className="mt-2 text-sm text-gray-400">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f111a] p-6 shadow-2xl">
+              <h3 className="text-base font-bold text-white tracking-tight">Delete user?</h3>
+              <p className="mt-2 text-sm text-gray-400 leading-relaxed">
                 This permanently removes{" "}
-                <span className="font-medium text-white">
+                <span className="font-semibold text-white">
                   {pendingDelete.name || pendingDelete.email}
                 </span>{" "}
                 from authentication and the database. This cannot be undone.
@@ -250,14 +259,14 @@ export default function AdminUsersPage() {
                 <button
                   onClick={() => setPendingDelete(null)}
                   disabled={deleting}
-                  className="rounded-lg border border-[#2a2f45] px-4 py-2 text-sm text-gray-300 transition hover:bg-[#0f1117] disabled:opacity-60"
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition hover:bg-white/5 disabled:opacity-60"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmDelete}
                   disabled={deleting}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2 text-sm font-semibold text-white transition duration-200 disabled:opacity-60"
                 >
                   {deleting ? "Deleting…" : "Delete"}
                 </button>
@@ -268,7 +277,7 @@ export default function AdminUsersPage() {
 
         {/* Toast */}
         {toast && (
-          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm text-white shadow-xl">
+          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#0f111a] px-5 py-3 text-sm font-medium text-white shadow-2xl backdrop-blur-xl">
             {toast}
           </div>
         )}

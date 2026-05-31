@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { logout } from "@/lib/auth";
 import {
@@ -83,51 +84,69 @@ export default function AdminPage() {
   return (
     <ProtectedRoute>
       <div
-        className={`${dmSans.className} min-h-screen bg-[#0f1117] text-gray-200`}
+        className={`${dmSans.className} min-h-screen bg-[#07090e] text-gray-200 antialiased relative overflow-hidden`}
       >
+        {/* Background ambient glows */}
+        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/5 blur-[120px] pointer-events-none z-0" />
+        <div className="absolute top-1/3 right-0 h-[600px] w-[600px] translate-x-1/3 rounded-full bg-indigo-500/5 blur-[130px] pointer-events-none z-0" />
+
         {/* Header */}
-        <header className="border-b border-[#2a2f45]">
+        <header className="relative z-10 border-b border-white/5 bg-[#07090e]/75 backdrop-blur-lg">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#4f8ef7]/15 text-[#4f8ef7]">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </span>
-              <h1 className="text-lg font-bold text-white">Hackathon Team</h1>
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo.png"
+                alt="Xinity Logo"
+                className="h-10 w-auto object-contain"
+              />
+              <h1 className="text-lg font-bold tracking-tight text-white">
+                Xinity <span className="text-gray-400 font-medium">Admin</span>
+              </h1>
             </div>
-            <button
-              onClick={handleLogout}
-              className="rounded-lg border border-[#2a2f45] px-3 py-1.5 text-sm text-gray-300 transition hover:bg-[#181c27] hover:text-white"
-            >
-              Log out
-            </button>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/users"
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition duration-200 hover:bg-white/5 hover:text-white"
+              >
+                Manage Users
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="rounded-xl bg-white/5 hover:bg-white/10 px-4 py-2 text-sm font-semibold text-white transition duration-200"
+              >
+                Log out
+              </button>
+            </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">
+        <main className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">
           {/* SECTION 1 — Stats */}
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Total Contacts" value={totalContacts} />
+            <StatCard
+              label="Total Contacts"
+              value={totalContacts}
+              borderClass="border-l-blue-500"
+              bgGlow="hover:shadow-blue-500/5"
+            />
             <StatCard
               label="WA Sent / Pending"
               value={`${sentCount} / ${pendingCount}`}
+              borderClass="border-l-emerald-500"
+              bgGlow="hover:shadow-emerald-500/5"
             />
-            <StatCard label="Active Users" value={users.length} />
-            <StatCard label="Unassigned Contacts" value={unassigned.length} />
+            <StatCard
+              label="Active Users"
+              value={users.length}
+              borderClass="border-l-indigo-500"
+              bgGlow="hover:shadow-indigo-500/5"
+            />
+            <StatCard
+              label="Unassigned Contacts"
+              value={unassigned.length}
+              borderClass="border-l-amber-500"
+              bgGlow="hover:shadow-amber-500/5"
+            />
           </section>
 
           {/* SECTION 2 — Template */}
@@ -152,7 +171,7 @@ export default function AdminPage() {
 
         {/* Toast */}
         {toast && (
-          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm text-white shadow-xl">
+          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#0f111a] px-5 py-3 text-sm font-medium text-white shadow-2xl backdrop-blur-xl">
             {toast}
           </div>
         )}
@@ -167,21 +186,39 @@ export default function AdminPage() {
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-6">
+    <div className="rounded-2xl border border-white/5 bg-white/[0.02] shadow-xl p-6 hover:border-white/10 transition duration-300">
       {children}
     </div>
   );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="mb-4 text-base font-bold text-white">{children}</h2>;
+  return (
+    <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-400">
+      {children}
+    </h2>
+  );
 }
 
-function StatCard({ label, value }: { label: string; value: number | string }) {
+function StatCard({
+  label,
+  value,
+  borderClass,
+  bgGlow,
+}: {
+  label: string;
+  value: number | string;
+  borderClass: string;
+  bgGlow: string;
+}) {
   return (
-    <div className="rounded-2xl border border-[#2a2f45] bg-[#181c27] p-5">
-      <p className="text-sm text-gray-400">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-white">{value}</p>
+    <div
+      className={`rounded-2xl border border-white/5 border-l-4 ${borderClass} bg-white/[0.02] p-6 shadow-md transition duration-300 hover:border-white/10 ${bgGlow} hover:shadow-lg`}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-bold tracking-tight text-white">{value}</p>
     </div>
   );
 }
