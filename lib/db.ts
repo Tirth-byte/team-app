@@ -233,6 +233,47 @@ export async function assignContacts(
   }
 }
 
+/**
+ * Assign a custom number of contacts to each user.
+ * allocations is an array of { userId: string, count: number }.
+ * unassignedContacts is the list of currently unassigned contacts.
+ */
+export async function assignCustomAllocations(
+  allocations: { userId: string; count: number }[],
+  unassignedContacts: Contact[]
+): Promise<void> {
+  if (allocations.length === 0 || unassignedContacts.length === 0) return;
+
+  const db = getDb();
+  let batch = writeBatch(db);
+  let opsInBatch = 0;
+  let contactIndex = 0;
+
+  for (const alloc of allocations) {
+    const { userId, count } = alloc;
+    if (count <= 0) continue;
+
+    for (let i = 0; i < count; i++) {
+      if (contactIndex >= unassignedContacts.length) break;
+      const contactId = unassignedContacts[contactIndex].id;
+      batch.update(doc(db, CONTACTS, contactId), { assignedTo: userId });
+      opsInBatch++;
+      contactIndex++;
+
+      if (opsInBatch === BATCH_LIMIT) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opsInBatch = 0;
+      }
+    }
+  }
+
+  if (opsInBatch > 0) {
+    await batch.commit();
+  }
+}
+
+
 // ---------------------------------------------------------------------------
 // Template (settings/templates)
 // ---------------------------------------------------------------------------

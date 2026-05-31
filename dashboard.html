@@ -649,6 +649,52 @@ tbody tr:hover{background:rgba(79,142,247,.06);border-left-color:var(--accent)}
   font-size:.85rem;background:var(--bg);
   border:1px dashed var(--border);border-radius:var(--radius);
 }
+.allocation-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-qty {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  user-select: none;
+}
+.btn-qty:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent);
+}
+.qty-input {
+  width: 54px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.qty-input:focus {
+  border-color: var(--accent);
+}
 
 /* ── Progress bars (team) ────────────────────── */
 .bar-track{
@@ -997,17 +1043,11 @@ tbody tr:hover{background:rgba(79,142,247,.06);border-left-color:var(--accent)}
     <div class="team-section">
       <h3>🔀 Distribute Contacts</h3>
       <div class="sec-sub"><span id="teamUnassigned" style="color:var(--accent);font-weight:700;font-size:1.1rem">0</span> unassigned contacts in cloud</div>
-      <div class="distribute-label">Select team members to assign contacts to:</div>
-      <div class="select-all-row" id="selectAllRow" style="display:none">
-        <label class="user-pick select-all-pick">
-          <input type="checkbox" id="selectAllUsers">
-          <div><div class="up-name">Select All</div></div>
-        </label>
-      </div>
+      <div class="distribute-label">Specify the number of contacts to allocate to each team member:</div>
       <div id="teamUserPicks"></div>
       <div class="distribute-actions">
-        <div class="distribute-summary" id="distributeSummary">No users selected</div>
-        <button class="btn btn-green" id="teamDistributeBtn">🔀 Distribute Equally</button>
+        <div class="distribute-summary" id="distributeSummary">Total allocated: 0 contacts</div>
+        <button class="btn btn-green" id="teamDistributeBtn" disabled>🔀 Distribute Contacts</button>
       </div>
     </div>
 
@@ -2084,7 +2124,7 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
   let unsubAdminContacts = null, unsubAdminUsers = null;
   let unsubUserContacts = null;
   let cloudTemplate = "";
-  const selectedUserIds = new Set();
+  const teamAllocations = {};
   let userFilter = "pending";
 
   function setLoginLoading(on) {
@@ -2380,29 +2420,57 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
 
   /* Section C — distribute */
   document.getElementById("teamDistributeBtn").addEventListener("click", function () {
-    const userIds = Array.from(selectedUserIds);
     const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo; });
-    if (userIds.length === 0) { showToast("Select at least one user", "info"); return; }
-    if (unassigned.length === 0) { showToast("No unassigned contacts", "info"); return; }
+    if (unassigned.length === 0) { showToast("❌ No unassigned contacts in the cloud.", "error"); return; }
+
+    const allocs = [];
+    let totalAllocated = 0;
+    for (const uid in teamAllocations) {
+      const count = teamAllocations[uid] || 0;
+      if (count > 0) {
+        allocs.push({ uid: uid, count: count });
+        totalAllocated += count;
+      }
+    }
+
+    if (totalAllocated === 0) { showToast("⚠️ Specify allocation amount for at least one team member.", "info"); return; }
+    if (totalAllocated > unassigned.length) { showToast("❌ Total allocated contacts exceed available unassigned contacts.", "error"); return; }
 
     const btn = this; btn.disabled = true;
     let chain = Promise.resolve();
-    for (let i = 0; i < unassigned.length; i += 450) {
-      const chunk = unassigned.slice(i, i + 450);
+
+    const updates = [];
+    let contactIndex = 0;
+    allocs.forEach(function (alloc) {
+      for (let i = 0; i < alloc.count; i++) {
+        if (contactIndex >= unassigned.length) break;
+        updates.push({ contactId: unassigned[contactIndex].id, assignedTo: alloc.uid });
+        contactIndex++;
+      }
+    });
+
+    for (let i = 0; i < updates.length; i += 450) {
+      const chunk = updates.slice(i, i + 450);
       chain = chain.then(function () {
         const batch = db.batch();
-        chunk.forEach(function (c, j) {
-          const assignTo = userIds[(i + j) % userIds.length];
-          batch.update(db.collection("contacts").doc(c.id), { assignedTo: assignTo });
+        chunk.forEach(function (up) {
+          batch.update(db.collection("contacts").doc(up.contactId), { assignedTo: up.assignedTo });
         });
         return batch.commit();
       });
     }
+
     chain.then(function () {
       btn.disabled = false;
-      selectedUserIds.clear();
-      showToast("🔀 " + unassigned.length + " contacts distributed to " + userIds.length + " users", "success");
-    }).catch(function (e) { btn.disabled = false; showToast("❌ " + e.message, "error"); });
+      for (const uid in teamAllocations) {
+        teamAllocations[uid] = 0;
+      }
+      renderTeam();
+      showToast("🔀 Distributed " + totalAllocated + " contacts successfully!", "success");
+    }).catch(function (e) {
+      btn.disabled = false;
+      showToast("❌ " + e.message, "error");
+    });
   });
 
   /* Delete user (Firestore doc; revokes app access) */
@@ -2449,53 +2517,77 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
       }
     });
 
-    /* Section C — user picker checkboxes */
+    /* Section C — user picker check box -> numeric allocations */
     const picks = document.getElementById("teamUserPicks");
-    const selectAllRow = document.getElementById("selectAllRow");
     const summaryEl = document.getElementById("distributeSummary");
     if (cloudUsers.length === 0) {
       picks.innerHTML = '<div class="no-users-msg">👤 No users yet — create one in the Manage Users section below.</div>';
-      selectAllRow.style.display = "none";
       summaryEl.textContent = "No users available";
     } else {
-      selectAllRow.style.display = "block";
       picks.innerHTML = cloudUsers.map(function (u) {
-        const s = stats[u.id] || { assigned: 0 };
-        const checked = selectedUserIds.has(u.id) ? "checked" : "";
-        return '<label class="user-pick"><input type="checkbox" data-uid="' + u.id + '" ' + checked + '>' +
-          '<div style="flex:1"><div class="up-name">' + escHtml(u.name || u.email) + '</div>' +
-          '<div class="up-meta">' + escHtml(u.email) + '</div></div>' +
-          '<div class="up-assigned-badge">' + s.assigned + ' assigned</div></label>';
+        const s = stats[u.id] || { assigned: 0, sent: 0 };
+        const pending = s.assigned - s.sent;
+        const allocatedVal = teamAllocations[u.id] || "";
+        return '<div class="user-pick" style="cursor:default">' +
+          '<div style="flex:1">' +
+            '<div class="up-name">' + escHtml(u.name || u.email) + '</div>' +
+            '<div class="up-meta">' + escHtml(u.email) + ' • <span style="color:var(--accent);font-weight:500">' + pending + ' pending tasks</span></div>' +
+          '</div>' +
+          '<div class="allocation-controls">' +
+            '<button type="button" class="btn-qty" data-uid="' + u.id + '" data-action="sub5">-5</button>' +
+            '<button type="button" class="btn-qty" data-uid="' + u.id + '" data-action="sub1">-1</button>' +
+            '<input type="number" class="qty-input" data-uid="' + u.id + '" value="' + allocatedVal + '" placeholder="0" min="0">' +
+            '<button type="button" class="btn-qty" data-uid="' + u.id + '" data-action="add1">+1</button>' +
+            '<button type="button" class="btn-qty" data-uid="' + u.id + '" data-action="add5">+5</button>' +
+          '</div>' +
+        '</div>';
       }).join("");
 
-      function updatePickerState() {
-        const count = selectedUserIds.size;
-        summaryEl.textContent = count === 0 ? "No users selected" : count + " user" + (count > 1 ? "s" : "") + " selected · " + unassigned.length + " contacts to distribute";
-        summaryEl.style.color = count > 0 ? "var(--green)" : "var(--muted)";
-        const allCheckbox = document.getElementById("selectAllUsers");
-        if (allCheckbox) allCheckbox.checked = count === cloudUsers.length;
+      function updateDistributeSummary() {
+        let total = 0;
+        for (const uid in teamAllocations) {
+          total += teamAllocations[uid] || 0;
+        }
+        const distBtn = document.getElementById("teamDistributeBtn");
+        
+        if (total > unassigned.length) {
+          summaryEl.innerHTML = '<span style="color:var(--danger);font-weight:600">⚠️ Allocated ' + total + ' / ' + unassigned.length + ' (Over-allocated!)</span>';
+          distBtn.disabled = true;
+        } else {
+          summaryEl.innerHTML = 'Total allocated: <span style="color:var(--green);font-weight:600">' + total + '</span> / ' + unassigned.length + ' contacts';
+          distBtn.disabled = (total === 0 || unassigned.length === 0);
+        }
       }
 
-      picks.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-        cb.addEventListener("change", function () {
+      picks.querySelectorAll('.qty-input').forEach(function (input) {
+        input.addEventListener("input", function () {
           const uid = this.getAttribute("data-uid");
-          if (this.checked) selectedUserIds.add(uid); else selectedUserIds.delete(uid);
-          updatePickerState();
+          let val = parseInt(this.value, 10);
+          if (isNaN(val) || val < 0) val = 0;
+          teamAllocations[uid] = val;
+          updateDistributeSummary();
         });
       });
 
-      const allCb = document.getElementById("selectAllUsers");
-      allCb.checked = selectedUserIds.size === cloudUsers.length;
-      allCb.onchange = function () {
-        const on = this.checked;
-        cloudUsers.forEach(function (u) {
-          if (on) selectedUserIds.add(u.id); else selectedUserIds.delete(u.id);
+      picks.querySelectorAll('.btn-qty').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const uid = this.getAttribute("data-uid");
+          const action = this.getAttribute("data-action");
+          const input = picks.querySelector('.qty-input[data-uid="' + uid + '"]');
+          let current = parseInt(input.value, 10) || 0;
+          
+          if (action === "sub5") current = Math.max(0, current - 5);
+          else if (action === "sub1") current = Math.max(0, current - 1);
+          else if (action === "add1") current = current + 1;
+          else if (action === "add5") current = current + 5;
+          
+          input.value = current || "";
+          teamAllocations[uid] = current;
+          updateDistributeSummary();
         });
-        picks.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.checked = on; });
-        updatePickerState();
-      };
+      });
 
-      updatePickerState();
+      updateDistributeSummary();
     }
 
     /* Section D — progress table */

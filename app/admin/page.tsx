@@ -18,7 +18,7 @@ import { logout } from "@/lib/auth";
 import {
   type AppUser,
   type Contact,
-  assignContacts,
+  assignCustomAllocations,
   getTemplate,
   importContacts,
   saveTemplate,
@@ -159,6 +159,7 @@ export default function AdminPage() {
           <DistributeSection
             users={users}
             unassigned={unassigned}
+            contacts={contacts}
             onToast={showToast}
           />
 
@@ -347,35 +348,59 @@ function ImportSection({ onToast }: { onToast: (m: string) => void }) {
 function DistributeSection({
   users,
   unassigned,
+  contacts,
   onToast,
 }: {
   users: AppUser[];
   unassigned: Contact[];
+  contacts: Contact[];
   onToast: (m: string) => void;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [working, setWorking] = useState(false);
 
-  function toggle(uid: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid);
-      else next.add(uid);
-      return next;
+  const totalAllocated = useMemo(() => {
+    return Object.values(allocations).reduce((sum, val) => sum + (val || 0), 0);
+  }, [allocations]);
+
+  const isOverAllocated = totalAllocated > unassigned.length;
+
+  const getUserPendingCount = useCallback(
+    (uid: string) => {
+      return contacts.filter((c) => c.assignedTo === uid && !c.waSent).length;
+    },
+    [contacts]
+  );
+
+  const handleAllocationChange = (uid: string, value: number) => {
+    setAllocations((prev) => ({
+      ...prev,
+      [uid]: Math.max(0, value),
+    }));
+  };
+
+  const adjustAllocation = (uid: string, amount: number) => {
+    setAllocations((prev) => {
+      const current = prev[uid] || 0;
+      return {
+        ...prev,
+        [uid]: Math.max(0, current + amount),
+      };
     });
-  }
+  };
 
   async function distribute() {
-    if (selected.size === 0 || unassigned.length === 0) return;
+    if (totalAllocated === 0 || isOverAllocated || unassigned.length === 0) return;
     setWorking(true);
     try {
-      const userIds = Array.from(selected);
-      const contactIds = unassigned.map((c) => c.id);
-      await assignContacts(userIds, contactIds);
-      onToast(
-        `Distributed ${contactIds.length} contacts to ${userIds.length} users`
-      );
-      setSelected(new Set());
+      const allocList = Object.entries(allocations)
+        .map(([userId, count]) => ({ userId, count }))
+        .filter((a) => a.count > 0);
+
+      await assignCustomAllocations(allocList, unassigned);
+
+      onToast(`Distributed ${totalAllocated} contacts to team members.`);
+      setAllocations({});
     } catch (err) {
       onToast(
         err instanceof Error ? `Failed: ${err.message}` : "Distribution failed"
@@ -388,38 +413,95 @@ function DistributeSection({
   return (
     <Card>
       <SectionTitle>Distribute Contacts</SectionTitle>
-      <p className="mb-4 text-sm text-gray-400">
-        <span className="font-semibold text-white">{unassigned.length}</span>{" "}
-        unassigned contacts
-      </p>
+      
+      <div className="mb-4 flex items-center justify-between text-sm">
+        <span className="text-gray-400">
+          Unassigned Contacts: <span className="font-semibold text-white">{unassigned.length}</span>
+        </span>
+        <span className={`${isOverAllocated ? "text-red-400 font-semibold" : "text-gray-400"}`}>
+          Allocated: <span className="font-semibold">{totalAllocated}</span> / {unassigned.length}
+        </span>
+      </div>
 
       {users.length === 0 ? (
         <p className="text-sm text-gray-500">No users available.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {users.map((u) => (
-            <label
-              key={u.id}
-              className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#2a2f45] bg-[#0f1117] px-3.5 py-2.5 text-sm transition hover:border-[#4f8ef7]/50"
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(u.id)}
-                onChange={() => toggle(u.id)}
-                className="h-4 w-4 accent-[#4f8ef7]"
-              />
-              <span className="text-white">{u.name || u.email}</span>
-            </label>
-          ))}
+        <div className="space-y-3">
+          {users.map((u) => {
+            const pendingTasks = getUserPendingCount(u.id);
+            const allocatedCount = allocations[u.id] || 0;
+            return (
+              <div
+                key={u.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#2a2f45] bg-[#0f1117] p-4 transition hover:border-[#4f8ef7]/35"
+              >
+                <div>
+                  <div className="font-medium text-white">{u.name || u.email}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {u.email} • <span className="text-indigo-400 font-medium">{pendingTasks} pending tasks</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(u.id, -5)}
+                    className="rounded bg-white/5 hover:bg-white/10 px-2 py-1 text-xs text-gray-300 transition"
+                  >
+                    -5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(u.id, -1)}
+                    className="rounded bg-white/5 hover:bg-white/10 px-2 py-1 text-xs text-gray-300 transition"
+                  >
+                    -1
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    max={unassigned.length}
+                    value={allocatedCount || ""}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      handleAllocationChange(u.id, isNaN(val) ? 0 : val);
+                    }}
+                    placeholder="0"
+                    className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-center text-sm font-semibold text-white outline-none transition focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(u.id, 1)}
+                    className="rounded bg-white/5 hover:bg-white/10 px-2 py-1 text-xs text-gray-300 transition"
+                  >
+                    +1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(u.id, 5)}
+                    className="rounded bg-white/5 hover:bg-white/10 px-2 py-1 text-xs text-gray-300 transition"
+                  >
+                    +5
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {isOverAllocated && (
+        <p className="mt-4 text-xs font-semibold text-red-400" role="alert">
+          ⚠️ Cannot allocate more contacts ({totalAllocated}) than the available unassigned contacts ({unassigned.length}).
+        </p>
       )}
 
       <button
         onClick={distribute}
-        disabled={working || selected.size === 0 || unassigned.length === 0}
-        className="mt-4 rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5] disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={working || totalAllocated === 0 || isOverAllocated || unassigned.length === 0}
+        className="mt-5 w-full rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3d7ce5] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {working ? "Distributing…" : "Distribute Equally"}
+        {working ? "Distributing…" : `Distribute ${totalAllocated} Contacts`}
       </button>
     </Card>
   );
