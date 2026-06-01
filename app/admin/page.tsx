@@ -14,7 +14,8 @@ import {
 } from "react";
 import Link from "next/link";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { logout } from "@/lib/auth";
+import { logout, onAuthStateChanged } from "@/lib/auth";
+import { type User } from "firebase/auth";
 import {
   type AppUser,
   type Contact,
@@ -25,6 +26,7 @@ import {
   subscribeContacts,
   subscribeUsers,
   restoreBackup,
+  updateContactStatus,
 } from "@/lib/db";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"] });
@@ -47,6 +49,7 @@ export default function AdminPage() {
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,9 +58,11 @@ export default function AdminPage() {
   useEffect(() => {
     const unsubContacts = subscribeContacts(setContacts);
     const unsubUsers = subscribeUsers(setUsers);
+    const unsubAuth = onAuthStateChanged(setCurrentUser);
     return () => {
       unsubContacts();
       unsubUsers();
+      unsubAuth();
     };
   }, []);
 
@@ -165,6 +170,14 @@ export default function AdminPage() {
 
           {/* SECTION 5 — Team progress */}
           <ProgressSection users={users} contacts={contacts} />
+
+          {/* SECTION 5.5 — Manage Contacts */}
+          <ContactsListSection
+            contacts={contacts}
+            users={users}
+            currentUser={currentUser}
+            onToast={showToast}
+          />
 
           {/* SECTION 6 — Team Backup & Restore */}
           <BackupSection onToast={showToast} users={users} contacts={contacts} />
@@ -703,6 +716,272 @@ function BackupSection({
       <p className="mt-3 text-xs text-gray-500">
         Download a complete backup of contacts, users, and WhatsApp template, or restore a previously saved team backup to Firestore.
       </p>
+    </Card>
+  );
+}
+
+function ContactsListSection({
+  contacts,
+  users,
+  currentUser,
+  onToast,
+}: {
+  contacts: Contact[];
+  users: AppUser[];
+  currentUser: User | null;
+  onToast: (m: string) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter] = useState<"all" | "pending" | "done" | "unassigned" | "assigned">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const userMap = useMemo(() => {
+    const map: Record<string, AppUser> = {};
+    for (const u of users) {
+      map[u.id] = u;
+    }
+    return map;
+  }, [users]);
+
+  // Reset page when search or filter changes
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    setCurrentPage(1);
+  };
+
+  const handleFilterChange = (val: typeof filter) => {
+    setFilter(val);
+    setCurrentPage(1);
+  };
+
+  const filtered = useMemo(() => {
+    return contacts.filter((c) => {
+      // Status filter
+      if (filter === "pending" && c.waSent) return false;
+      if (filter === "done" && !c.waSent) return false;
+      if (filter === "unassigned" && c.assignedTo) return false;
+      if (filter === "assigned" && !c.assignedTo) return false;
+
+      // Search term filter
+      if (searchTerm.trim()) {
+        const s = searchTerm.toLowerCase();
+        const nameMatch = c.name.toLowerCase().includes(s);
+        const emailMatch = c.email.toLowerCase().includes(s);
+        const mobileMatch = c.mobile.toLowerCase().includes(s);
+        const orgMatch = c.org.toLowerCase().includes(s);
+        const teamMatch = c.teamName.toLowerCase().includes(s);
+        const assignedUser = c.assignedTo ? userMap[c.assignedTo] : null;
+        const userMatch = assignedUser
+          ? (assignedUser.name || assignedUser.email).toLowerCase().includes(s)
+          : false;
+        return nameMatch || emailMatch || mobileMatch || orgMatch || teamMatch || userMatch;
+      }
+
+      return true;
+    });
+  }, [contacts, filter, searchTerm, userMap]);
+
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  // Keep page in valid range if list shrinks
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
+
+  async function handleToggleStatus(contact: Contact) {
+    setUpdatingId(contact.id);
+    try {
+      const nextStatus = !contact.waSent;
+      await updateContactStatus(contact.id, nextStatus, currentUser?.uid || "admin");
+      onToast(`Contact "${contact.name}" marked as ${nextStatus ? "Done" : "Pending"}.`);
+    } catch (err) {
+      onToast(err instanceof Error ? `Failed: ${err.message}` : "Failed to update contact");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <SectionTitle>Manage Contacts</SectionTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            Total filtered: {filtered.length} contacts
+          </p>
+        </div>
+
+        {/* Search bar */}
+        <div className="relative w-full md:w-72">
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            value={searchTerm}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full rounded-xl border border-[#2a2f45] bg-[#0f1117] pl-3 pr-8 py-2 text-sm text-white placeholder-gray-500 outline-none transition focus:border-[#4f8ef7] focus:ring-1 focus:ring-[#4f8ef7]"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => handleSearchChange("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["all", "pending", "done", "unassigned", "assigned"] as const).map((f) => {
+          const active = filter === f;
+          let label = f.charAt(0).toUpperCase() + f.slice(1);
+          if (f === "done") label = "Done";
+          return (
+            <button
+              key={f}
+              onClick={() => handleFilterChange(f)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                active
+                  ? "bg-[#4f8ef7]/15 text-[#4f8ef7] border border-[#4f8ef7]/30"
+                  : "text-gray-400 border border-white/5 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <p className="text-sm text-gray-500 py-4 text-center">No contacts match the criteria.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-[#2a2f45] text-xs uppercase tracking-wide text-gray-500">
+                <th className="py-3 pr-4 font-medium">Name & Team</th>
+                <th className="py-3 pr-4 font-medium">Contact Details</th>
+                <th className="py-3 pr-4 font-medium">Assigned To</th>
+                <th className="py-3 pr-4 font-medium">Status</th>
+                <th className="py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((contact) => {
+                const assignedUser = contact.assignedTo ? userMap[contact.assignedTo] : null;
+                const assignedName = assignedUser
+                  ? assignedUser.name || assignedUser.email
+                  : "Unassigned";
+                const isUpdating = updatingId === contact.id;
+
+                return (
+                  <tr
+                    key={contact.id}
+                    className="border-b border-[#2a2f45]/60 last:border-0 hover:bg-white/[0.01] transition-colors"
+                  >
+                    {/* Name & Team */}
+                    <td className="py-4 pr-4">
+                      <div className="font-semibold text-white">{contact.name}</div>
+                      {contact.teamName && (
+                        <div className="text-xs text-gray-500 mt-0.5">{contact.teamName}</div>
+                      )}
+                    </td>
+
+                    {/* Details */}
+                    <td className="py-4 pr-4 text-xs font-mono text-gray-400">
+                      <div>{contact.mobile || "No Mobile"}</div>
+                      <div className="mt-0.5 text-gray-500">{contact.email}</div>
+                    </td>
+
+                    {/* Assigned User */}
+                    <td className="py-4 pr-4 text-gray-300">
+                      <span
+                        className={`inline-block rounded-md px-2 py-1 text-xs ${
+                          contact.assignedTo
+                            ? "bg-indigo-500/10 text-indigo-300"
+                            : "bg-amber-500/10 text-amber-300"
+                        }`}
+                      >
+                        {assignedName}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-4 pr-4">
+                      {contact.waSent ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-green-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                          Done ✓✓
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-gray-500" />
+                          Pending
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Action */}
+                    <td className="py-4 text-right">
+                      <button
+                        onClick={() => handleToggleStatus(contact)}
+                        disabled={isUpdating}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition duration-200 active:scale-95 disabled:opacity-50 ${
+                          contact.waSent
+                            ? "border-amber-500/25 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/40"
+                            : "border-green-500/25 text-green-400 hover:bg-green-500/10 hover:border-green-500/40"
+                        }`}
+                      >
+                        {isUpdating
+                          ? "Updating…"
+                          : contact.waSent
+                          ? "Mark Pending"
+                          : "Mark Done"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-5 flex items-center justify-between border-t border-[#2a2f45]/40 pt-4 text-sm">
+          <span className="text-gray-500 text-xs">
+            Showing Page {currentPage} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

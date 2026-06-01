@@ -141,6 +141,19 @@ export function updateContactWaSent(id: string, uid: string): Promise<void> {
   });
 }
 
+/** Update a contact's WhatsApp sent status directly (e.g. by admin). */
+export function updateContactStatus(
+  id: string,
+  waSent: boolean,
+  uid: string | null
+): Promise<void> {
+  return updateDoc(doc(getDb(), CONTACTS, id), {
+    waSent,
+    waSentAt: waSent ? new Date() : null,
+    waSentBy: waSent ? uid : null,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
