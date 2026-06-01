@@ -102,8 +102,8 @@ function mapContact(
     org: data.org ?? "",
     regStatus: data.regStatus ?? "",
     assignedTo: data.assignedTo ?? null,
-    waSent: data.waSent ?? false,
-    waSentAt: toDate(data.waSentAt),
+    waSent: data.waSent ?? data.whatsappSent ?? false,
+    waSentAt: toDate(data.waSentAt ?? data.whatsappSentAt),
     waSentBy: data.waSentBy ?? null,
     importedAt: toDate(data.importedAt) ?? new Date(0),
     teamId: data.teamId ?? "",
@@ -154,6 +154,8 @@ export function updateContactWaSent(id: string, uid: string): Promise<void> {
     waSent: true,
     waSentAt: new Date(),
     waSentBy: uid,
+    whatsappSent: true,
+    whatsappSentAt: new Date(),
   });
 }
 
@@ -167,6 +169,8 @@ export function updateContactStatus(
     waSent,
     waSentAt: waSent ? new Date() : null,
     waSentBy: waSent ? uid : null,
+    whatsappSent: waSent,
+    whatsappSentAt: waSent ? new Date() : null,
   });
 }
 
