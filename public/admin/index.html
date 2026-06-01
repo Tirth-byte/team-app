@@ -2302,6 +2302,47 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
     unsubAdminContacts = db.collection("contacts").onSnapshot(function (snap) {
       cloudContacts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       renderTeam();
+
+      // Realtime Sync cloud status updates back to local storage contacts & redraw table
+      var local = getContacts();
+      var localUpdated = false;
+      var cloudByEmail = {};
+      for (var i = 0; i < cloudContacts.length; i++) {
+        var em = (cloudContacts[i].email || "").trim().toLowerCase();
+        if (em) cloudByEmail[em] = cloudContacts[i];
+      }
+
+      for (var j = 0; j < local.length; j++) {
+        var em = (local[j].email || "").trim().toLowerCase();
+        var cloud = cloudByEmail[em];
+        if (cloud) {
+          // Sync WhatsApp status
+          var cloudWa = cloud.waSent || cloud.whatsappSent || false;
+          if (cloudWa && !local[j].wa_sent) {
+            local[j].wa_sent = true;
+            localUpdated = true;
+          } else if (!cloudWa && local[j].wa_sent) {
+            local[j].wa_sent = false;
+            localUpdated = true;
+          }
+          
+          // Sync Email status
+          var cloudEmail = cloud.emailSent || false;
+          if (cloudEmail && !local[j].email_sent) {
+            local[j].email_sent = true;
+            localUpdated = true;
+          } else if (!cloudEmail && local[j].email_sent) {
+            local[j].email_sent = false;
+            localUpdated = true;
+          }
+        }
+      }
+
+      if (localUpdated) {
+        saveContacts(local);
+        renderStats();
+        applyFilters();
+      }
     });
     unsubAdminUsers = db.collection("users").where("role", "==", "user").onSnapshot(function (snap) {
       cloudUsers = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
