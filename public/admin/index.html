@@ -2476,7 +2476,7 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
 
   /* Section C — distribute */
   document.getElementById("teamDistributeBtn").addEventListener("click", function () {
-    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo; });
+    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo && !c.waSent; });
     if (unassigned.length === 0) { showToast("❌ No unassigned contacts in the cloud.", "error"); return; }
 
     const allocs = [];
@@ -2560,7 +2560,7 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
 
   /* ── Render the whole team panel from current snapshots ── */
   function renderTeam() {
-    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo; });
+    const unassigned = cloudContacts.filter(function (c) { return !c.assignedTo && !c.waSent; });
     document.getElementById("teamUnassigned").textContent = unassigned.length;
 
     /* per-user stats */

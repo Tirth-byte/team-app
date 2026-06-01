@@ -89,7 +89,7 @@ export default function AdminPage() {
   const sentCount = contacts.filter((c) => c.waSent).length;
   const pendingCount = totalContacts - sentCount;
   const unassigned = useMemo(
-    () => contacts.filter((c) => !c.assignedTo),
+    () => contacts.filter((c) => !c.assignedTo && !c.waSent),
     [contacts]
   );
 
