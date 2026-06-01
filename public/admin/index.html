@@ -1151,6 +1151,7 @@ const PER_PAGE = 20;
 
 let currentPage = 1;
 let filteredContacts = [];
+let cloudContacts = [];
 
 /* ================================================================
    HELPERS — localStorage
@@ -2135,7 +2136,8 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
   /* ── Shared state ── */
   let currentUser = null, currentRole = null, currentName = "";
   let adminInited = false;
-  let cloudContacts = [], cloudUsers = [];
+  cloudContacts = [];
+  let cloudUsers = [];
   let unsubAdminContacts = null, unsubAdminUsers = null;
   let unsubUserContacts = null;
   let cloudTemplate = "";
