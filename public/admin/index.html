@@ -1438,25 +1438,25 @@ function handleWaSend(id, isResend) {
     saveContacts(contacts);
     renderStats();
     applyFilters();
+  }
 
-    /* Also update Firestore if this contact exists in cloud */
-    if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
-      var email = (c.email || "").trim().toLowerCase();
-      if (email) {
-        var cloudId = null;
-        for (var i = 0; i < cloudContacts.length; i++) {
-          if ((cloudContacts[i].email || "").trim().toLowerCase() === email) {
-            cloudId = cloudContacts[i].id;
-            break;
-          }
+  /* Also update Firestore if this contact exists in cloud */
+  if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
+    var email = (c.email || "").trim().toLowerCase();
+    if (email) {
+      var cloudId = null;
+      for (var i = 0; i < cloudContacts.length; i++) {
+        if ((cloudContacts[i].email || "").trim().toLowerCase() === email) {
+          cloudId = cloudContacts[i].id;
+          break;
         }
-        if (cloudId) {
-          firebase.firestore().collection("contacts").doc(cloudId).update({
-            waSent: true,
-            waSentAt: firebase.firestore.FieldValue.serverTimestamp(),
-            waSentBy: firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
-          }).catch(function(err) { console.error("Error updating cloud waSent:", err); });
-        }
+      }
+      if (cloudId) {
+        firebase.firestore().collection("contacts").doc(cloudId).update({
+          waSent: true,
+          waSentAt: firebase.firestore.FieldValue.serverTimestamp(),
+          waSentBy: firebase.auth().currentUser ? firebase.auth().currentUser.uid : null
+        }).catch(function(err) { console.error("Error updating cloud waSent:", err); });
       }
     }
   }
