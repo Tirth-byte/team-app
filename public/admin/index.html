@@ -1579,71 +1579,57 @@ function handleBulkEmail() {
   window.location.href = mailto;
 
   /* When user returns to this tab, ask if they sent it */
-  var asked = false;
   var count = pending.length;
 
-  function askOnReturn() {
-    if (asked) return;
-    if (document.visibilityState === "visible") {
-      asked = true;
-      document.removeEventListener("visibilitychange", askOnReturn);
-      window.removeEventListener("pageshow", askOnReturn);
+  setTimeout(function() {
+     showModal(
+      "✉️ Did You Send the Email?",
+      "Did you successfully send the email to " + count + " recipient" + (count > 1 ? "s" : "") + "? If yes, they will be marked as sent and won't be selected next time.",
+      "Yes, Mark as Sent",
+      "btn-green"
+    ).then(function(confirmed) {
+      if (confirmed) {
+        var pendingIds = {};
+        for (var i = 0; i < pending.length; i++) pendingIds[pending[i]._id] = true;
+        var all = getContacts();
+        for (var j = 0; j < all.length; j++) {
+          if (pendingIds[all[j]._id]) all[j].email_sent = true;
+        }
+        saveContacts(all);
+        renderStats();
+        applyFilters();
+        showToast("✅ " + count + " emails marked as sent", "success");
 
-      /* Small delay so the tab switch feels natural */
-      setTimeout(function() {
-        showModal(
-          "✉️ Did You Send the Email?",
-          "Did you successfully send the email to " + count + " recipient" + (count > 1 ? "s" : "") + "? If yes, they will be marked as sent and won't be selected next time.",
-          "Yes, Mark as Sent",
-          "btn-green"
-        ).then(function(confirmed) {
-          if (confirmed) {
-            var pendingIds = {};
-            for (var i = 0; i < pending.length; i++) pendingIds[pending[i]._id] = true;
-            var all = getContacts();
-            for (var j = 0; j < all.length; j++) {
-              if (pendingIds[all[j]._id]) all[j].email_sent = true;
-            }
-            saveContacts(all);
-            renderStats();
-            applyFilters();
-            showToast("✅ " + count + " emails marked as sent", "success");
+        /* Also update Firestore if those contacts exist in cloud */
+        if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
+          var db = firebase.firestore();
+          var batch = db.batch();
+          var cloudByEmail = {};
+          for (var k = 0; k < cloudContacts.length; k++) {
+            var em = (cloudContacts[k].email || "").trim().toLowerCase();
+            if (em) cloudByEmail[em] = cloudContacts[k].id;
+          }
 
-            /* Also update Firestore if those contacts exist in cloud */
-            if (typeof firebase !== 'undefined' && firebase.firestore && typeof cloudContacts !== 'undefined') {
-              var db = firebase.firestore();
-              var batch = db.batch();
-              var cloudByEmail = {};
-              for (var k = 0; k < cloudContacts.length; k++) {
-                var em = (cloudContacts[k].email || "").trim().toLowerCase();
-                if (em) cloudByEmail[em] = cloudContacts[k].id;
-              }
-
-              var updatedCount = 0;
-              for (var p = 0; p < pending.length; p++) {
-                var em = (pending[p].email || "").trim().toLowerCase();
-                var id = cloudByEmail[em];
-                if (id) {
-                  batch.update(db.collection("contacts").doc(id), {
-                    emailSent: true,
-                    emailSentAt: firebase.firestore.FieldValue.serverTimestamp()
-                  });
-                  updatedCount++;
-                }
-              }
-
-              if (updatedCount > 0) {
-                batch.commit().catch(function(err) { console.error("Error committing email bulk update:", err); });
-              }
+          var updatedCount = 0;
+          for (var p = 0; p < pending.length; p++) {
+            var em = (pending[p].email || "").trim().toLowerCase();
+            var id = cloudByEmail[em];
+            if (id) {
+              batch.update(db.collection("contacts").doc(id), {
+                emailSent: true,
+                emailSentAt: firebase.firestore.FieldValue.serverTimestamp()
+              });
+              updatedCount++;
             }
           }
-        });
-      }, 400);
-    }
-  }
 
-  document.addEventListener("visibilitychange", askOnReturn);
-  window.addEventListener("pageshow", askOnReturn);
+          if (updatedCount > 0) {
+            batch.commit().catch(function(err) { console.error("Error committing email bulk update:", err); });
+          }
+        }
+      }
+    });
+  }, 1000);
 }
 
 /* ================================================================
