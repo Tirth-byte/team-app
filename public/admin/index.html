@@ -2454,7 +2454,12 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
       }
 
       Promise.all(deletePromises).then(function () {
-        showToast("Successfully deleted " + totalDeleted + " contacts from the cloud.", "success");
+        localStorage.removeItem(STORAGE_CONTACTS);
+        cloudContacts = [];
+        renderStats();
+        currentPage = 1;
+        applyFilters();
+        showToast("Successfully deleted " + totalDeleted + " contacts from the cloud & cleared local dashboard.", "success");
         btn.disabled = false;
         btn.textContent = "🗑️ Delete All from Cloud";
       }).catch(function (e) {
