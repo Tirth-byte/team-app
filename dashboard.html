@@ -1590,18 +1590,23 @@ function handleCSVImport(file) {
       var rows = results.data;
       var existing = getContacts();
       var existingIds = {};
-      for (var i = 0; i < existing.length; i++) existingIds[existing[i]._id] = true;
+      for (var i = 0; i < existing.length; i++) {
+        if (existing[i].email) {
+          existingIds[existing[i].email.trim().toLowerCase()] = true;
+        }
+      }
 
       var added = 0, dupes = 0;
       for (var r = 0; r < rows.length; r++) {
         var row = rows[r];
         var email = (row["Candidate's Email"] || "").trim();
         if (!email) continue;
+        var emailLower = email.toLowerCase();
 
-        if (existingIds[email]) { dupes++; continue; }
+        if (existingIds[emailLower]) { dupes++; continue; }
 
         existing.push({
-          _id: email,
+          _id: emailLower,
           name: (row["Candidate's Name"] || "").trim(),
           email: email,
           mobile: String(row["Candidate's Mobile"] || "").trim(),
@@ -1619,7 +1624,7 @@ function handleCSVImport(file) {
           wa_sent: false,
           imported_at: Date.now()
         });
-        existingIds[email] = true;
+        existingIds[emailLower] = true;
         added++;
       }
 

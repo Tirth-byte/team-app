@@ -42,6 +42,12 @@ function mapCsvRow(row: Record<string, string>) {
     role: row["Candidate role"] ?? "",
     org: row["Candidate's Organisation"] ?? "",
     regStatus: row["Reg. Status"] ?? "",
+    teamId: row["Team ID"] ?? "",
+    location: row["Candidate's Location"] ?? "",
+    domain: row["Domain"] ?? "",
+    course: row["Course"] ?? "",
+    track: row["Choose A Single Track"] ?? "",
+    regTime: row["Registration Time"] ?? "",
   };
 }
 

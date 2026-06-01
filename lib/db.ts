@@ -33,6 +33,14 @@ export interface Contact {
   waSentAt: Date | null;
   waSentBy: string | null;
   importedAt: Date;
+  teamId: string;
+  location: string;
+  domain: string;
+  course: string;
+  track: string;
+  regTime: string;
+  emailSent: boolean;
+  emailSentAt: Date | null;
 }
 
 export interface AppUser {
@@ -98,6 +106,14 @@ function mapContact(
     waSentAt: toDate(data.waSentAt),
     waSentBy: data.waSentBy ?? null,
     importedAt: toDate(data.importedAt) ?? new Date(0),
+    teamId: data.teamId ?? "",
+    location: data.location ?? "",
+    domain: data.domain ?? "",
+    course: data.course ?? "",
+    track: data.track ?? "",
+    regTime: data.regTime ?? "",
+    emailSent: data.emailSent ?? false,
+    emailSentAt: toDate(data.emailSentAt),
   };
 }
 
@@ -390,6 +406,14 @@ export async function importContacts(rows: any[]): Promise<number> {
       waSentAt: null,
       waSentBy: null,
       importedAt: now,
+      teamId: String(row.teamId ?? ""),
+      location: String(row.location ?? ""),
+      domain: String(row.domain ?? ""),
+      course: String(row.course ?? ""),
+      track: String(row.track ?? ""),
+      regTime: String(row.regTime ?? ""),
+      emailSent: false,
+      emailSentAt: null,
     });
 
     imported++;
@@ -509,6 +533,14 @@ export async function restoreBackup(data: any): Promise<number> {
         waSentAt: parseBackupDateOrNull(c.waSentAt),
         waSentBy: c.waSentBy || null,
         importedAt: parseBackupDate(c.importedAt),
+        teamId: String(c.teamId ?? ""),
+        location: String(c.location ?? ""),
+        domain: String(c.domain ?? ""),
+        course: String(c.course ?? ""),
+        track: String(c.track ?? ""),
+        regTime: String(c.regTime ?? ""),
+        emailSent: c.emailSent ?? c.email_sent ?? false,
+        emailSentAt: parseBackupDateOrNull(c.emailSentAt),
       });
 
       importedCount++;
