@@ -27,6 +27,7 @@ import {
   subscribeUsers,
   restoreBackup,
   updateContactStatus,
+  deleteAllContacts,
 } from "@/lib/db";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"] });
@@ -613,6 +614,7 @@ function BackupSection({
   contacts: Contact[];
 }) {
   const [restoring, setRestoring] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function handleBackupDownload() {
     try {
@@ -692,29 +694,54 @@ function BackupSection({
     reader.readAsText(file);
   }
 
+  async function handleDeleteAll() {
+    if (!window.confirm("Are you sure you want to delete ALL contacts from the cloud? This action cannot be undone.")) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const count = await deleteAllContacts();
+      onToast(`Successfully deleted ${count} contacts from the cloud.`);
+    } catch (err) {
+      onToast(
+        err instanceof Error ? `Delete failed: ${err.message}` : "Delete failed"
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Card>
       <SectionTitle>Team Backup & Restore</SectionTitle>
       <div className="flex flex-wrap gap-4">
         <button
           onClick={handleBackupDownload}
-          className="rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm font-medium text-gray-300 transition hover:bg-[#0f1117] hover:text-white"
+          disabled={deleting}
+          className="rounded-lg border border-[#2a2f45] bg-[#181c27] px-4 py-2.5 text-sm font-medium text-gray-300 transition hover:bg-[#0f1117] hover:text-white disabled:opacity-50"
         >
           Download Backup
         </button>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5]">
+        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#4f8ef7] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#3d7ce5] ${deleting ? "opacity-50 pointer-events-none" : ""}`}>
           {restoring ? "Restoring…" : "Restore Backup"}
           <input
             type="file"
             accept=".json"
             onChange={handleFile}
-            disabled={restoring}
+            disabled={restoring || deleting}
             className="hidden"
           />
         </label>
+        <button
+          onClick={handleDeleteAll}
+          disabled={deleting || restoring}
+          className="rounded-lg border border-red-500/25 bg-[#1f151b] px-4 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-500/10 hover:border-red-500/40 disabled:opacity-50"
+        >
+          {deleting ? "Deleting…" : "🗑️ Delete All from Cloud"}
+        </button>
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        Download a complete backup of contacts, users, and WhatsApp template, or restore a previously saved team backup to Firestore.
+        Download a complete backup of contacts, users, and WhatsApp template, restore a previously saved team backup to Firestore, or delete all contacts from the cloud for a fresh start.
       </p>
     </Card>
   );

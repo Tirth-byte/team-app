@@ -529,3 +529,35 @@ export async function restoreBackup(data: any): Promise<number> {
   return importedCount;
 }
 
+/**
+ * Delete all contacts from Firestore.
+ */
+export async function deleteAllContacts(): Promise<number> {
+  const db = getDb();
+  const snapshot = await getDocs(collection(db, CONTACTS));
+  const docs = snapshot.docs;
+  if (docs.length === 0) return 0;
+
+  let batch = writeBatch(db);
+  let opsInBatch = 0;
+  let deletedCount = 0;
+
+  for (const docSnap of docs) {
+    batch.delete(doc(db, CONTACTS, docSnap.id));
+    opsInBatch++;
+    deletedCount++;
+
+    if (opsInBatch === BATCH_LIMIT) {
+      await batch.commit();
+      batch = writeBatch(db);
+      opsInBatch = 0;
+    }
+  }
+
+  if (opsInBatch > 0) {
+    await batch.commit();
+  }
+
+  return deletedCount;
+}
+
