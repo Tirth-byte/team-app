@@ -1,32 +1,16 @@
 "use client";
-export const dynamic = "force-dynamic";
 
-import { DM_Sans } from "next/font/google";
+import { useState, useEffect, useMemo, useRef, useCallback, type FormEvent } from "react";
 import Link from "next/link";
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useRouter } from "next/navigation";
+import { DM_Sans } from "next/font/google";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { getAuth } from "@/lib/firebase";
-import {
-  type AppUser,
-  type Contact,
-  subscribeContacts,
-  subscribeUsers,
-} from "@/lib/db";
+import { logout } from "@/lib/auth";
+import { subscribeUsers, subscribeContacts } from "@/lib/db";
+import { authHeader } from "@/lib/authHeader";
+import { type AppUser, type Contact } from "@/types";
 
-const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "700"] });
-
-/** Get the current user's Firebase ID token for authenticating API calls. */
-async function authHeader(): Promise<HeadersInit> {
-  const token = await getAuth().currentUser?.getIdToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+const dmSans = DM_Sans({ subsets: ["latin"] });
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -41,9 +25,10 @@ export default function AdminUsersPage() {
   const [password, setPassword] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Delete modal state
-  const [pendingDelete, setPendingDelete] = useState<AppUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // Reset and Remove modal state
+  const [pendingReset, setPendingReset] = useState<AppUser | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<AppUser | null>(null);
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
     const unsubUsers = subscribeUsers(setUsers);
@@ -96,22 +81,41 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete) return;
-    setDeleting(true);
+  async function confirmReset() {
+    if (!pendingReset) return;
+    setWorking(true);
     try {
-      const res = await fetch(`/api/users/${pendingDelete.id}`, {
+      const res = await fetch(`/api/users/${pendingReset.id}?action=reset`, {
         method: "DELETE",
         headers: { ...(await authHeader()) },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to delete user.");
-      showToast(`User "${pendingDelete.name || pendingDelete.email}" deleted`);
-      setPendingDelete(null);
+      if (!res.ok) throw new Error(data.error ?? "Failed to reset tasks.");
+      showToast(`Tasks for "${pendingReset.name || pendingReset.email}" returned to pool`);
+      setPendingReset(null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to delete user.");
+      showToast(err instanceof Error ? err.message : "Failed to reset tasks.");
     } finally {
-      setDeleting(false);
+      setWorking(false);
+    }
+  }
+
+  async function confirmRemove() {
+    if (!pendingRemove) return;
+    setWorking(true);
+    try {
+      const res = await fetch(`/api/users/${pendingRemove.id}?action=remove`, {
+        method: "DELETE",
+        headers: { ...(await authHeader()) },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to remove user.");
+      showToast(`User "${pendingRemove.name || pendingRemove.email}" completely removed`);
+      setPendingRemove(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to remove user.");
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -226,12 +230,18 @@ export default function AdminUsersPage() {
                         <td className="py-4 pr-4 text-gray-300 font-medium">
                           {stats[u.id]?.sent ?? 0}
                         </td>
-                        <td className="py-4 text-right">
+                        <td className="py-4 text-right flex justify-end gap-2">
                           <button
-                            onClick={() => setPendingDelete(u)}
-                            className="rounded-xl border border-red-500/25 px-4 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500/10 hover:border-red-500/40 active:scale-95"
+                            onClick={() => setPendingReset(u)}
+                            className="rounded-xl border border-blue-500/25 px-3 py-1.5 text-xs font-bold text-blue-400 transition hover:bg-blue-500/10 hover:border-blue-500/40 active:scale-95"
                           >
-                            Delete
+                            Reset Tasks
+                          </button>
+                          <button
+                            onClick={() => setPendingRemove(u)}
+                            className="rounded-xl border border-red-500/25 px-3 py-1.5 text-xs font-bold text-red-400 transition hover:bg-red-500/10 hover:border-red-500/40 active:scale-95"
+                          >
+                            Remove
                           </button>
                         </td>
                       </tr>
@@ -243,32 +253,64 @@ export default function AdminUsersPage() {
           </section>
         </main>
 
-        {/* Delete confirm modal */}
-        {pendingDelete && (
+        {/* Reset tasks confirm modal */}
+        {pendingReset && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f111a] p-6 shadow-2xl">
-              <h3 className="text-base font-bold text-white tracking-tight">Delete user?</h3>
+              <h3 className="text-base font-bold text-white tracking-tight">Reset tasks to pool?</h3>
               <p className="mt-2 text-sm text-gray-400 leading-relaxed">
-                This permanently removes{" "}
+                This will return all tasks assigned to{" "}
                 <span className="font-semibold text-white">
-                  {pendingDelete.name || pendingDelete.email}
+                  {pendingReset.name || pendingReset.email}
                 </span>{" "}
-                from authentication and the database. This cannot be undone.
+                back to the unassigned pool so they can be distributed to other members. Their team member account will remain intact.
               </p>
               <div className="mt-6 flex justify-end gap-3">
                 <button
-                  onClick={() => setPendingDelete(null)}
-                  disabled={deleting}
+                  onClick={() => setPendingReset(null)}
+                  disabled={working}
                   className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition hover:bg-white/5 disabled:opacity-60"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={confirmDelete}
-                  disabled={deleting}
+                  onClick={confirmReset}
+                  disabled={working}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition duration-200 disabled:opacity-60"
+                >
+                  {working ? "Resetting…" : "Reset Tasks"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove user confirm modal */}
+        {pendingRemove && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f111a] p-6 shadow-2xl">
+              <h3 className="text-base font-bold text-white tracking-tight">Remove team member?</h3>
+              <p className="mt-2 text-sm text-gray-400 leading-relaxed">
+                This will permanently delete the team member account for{" "}
+                <span className="font-semibold text-white">
+                  {pendingRemove.name || pendingRemove.email}
+                </span>{" "}
+                from authentication and the database. This cannot be undone.
+              </p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setPendingRemove(null)}
+                  disabled={working}
+                  className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition hover:bg-white/5 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRemove}
+                  disabled={working}
                   className="rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2 text-sm font-semibold text-white transition duration-200 disabled:opacity-60"
                 >
-                  {deleting ? "Deleting…" : "Delete"}
+                  {working ? "Removing…" : "Remove"}
                 </button>
               </div>
             </div>

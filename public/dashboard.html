@@ -2627,9 +2627,45 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
     });
   });
 
-  /* Delete user (Firestore doc; revokes app access) */
-  window._deleteCloudUser = function (uid, label) {
-    showModal("Remove User", "Remove " + label + " from the team? Their pending tasks will become unassigned, and completed tasks will remain. (Their Google account still exists — they just won't have a role if they sign in again.)", "Remove", "btn-danger")
+  /* Reset user tasks (puts them back to pool) */
+  window._resetCloudUserTasks = function (uid, label) {
+    showModal("Reset Tasks", "Return only pending tasks assigned to " + label + " back to the unassigned pool? Their team member account will remain intact.", "Reset Tasks", "btn-primary")
+      .then(function (ok) {
+        if (!ok) return;
+
+        /* Find pending contacts assigned to or sent by this user */
+        const toReset = cloudContacts.filter(function (c) {
+          return (c.assignedTo === uid || c.waSentBy === uid) && !c.waSent;
+        });
+        let chain = Promise.resolve();
+
+        for (let i = 0; i < toReset.length; i += 450) {
+          const chunk = toReset.slice(i, i + 450);
+          chain = chain.then(function () {
+            const batch = db.batch();
+            chunk.forEach(function (c) {
+              batch.update(db.collection("contacts").doc(c.id), {
+                assignedTo: null,
+                waSent: false,
+                waSentAt: null,
+                waSentBy: null
+              });
+            });
+            return batch.commit();
+          });
+        }
+
+        chain.then(function () {
+          showToast("Tasks returned to pool successfully", "success");
+        }).catch(function (e) {
+          showToast("❌ " + e.message, "error");
+        });
+      });
+  };
+
+  /* Remove team member completely */
+  window._removeCloudUser = function (uid, label) {
+    showModal("Remove User", "Remove " + label + " from the team? Their pending tasks will become unassigned. This cannot be undone.", "Remove", "btn-danger")
       .then(function (ok) {
         if (!ok) return;
 
@@ -2769,7 +2805,8 @@ appId: "1:914766834792:web:96cfd3175900afa07ddfdd"
         const label = (u.name || u.email).replace(/'/g, "\\'");
         return "<tr><td>" + escHtml(u.name || "") + "</td><td>" + escHtml(u.email || "") +
           "</td><td>" + s.assigned + "</td><td>" + s.sent + "</td>" +
-          '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:.72rem" onclick="_deleteCloudUser(\'' + u.id + '\',\'' + escHtml(label) + '\')">Delete</button></td></tr>';
+          '<td><div style="display:flex;gap:6px"><button class="btn" style="padding:4px 10px;font-size:.72rem;background-color:#2563eb;color:white" onclick="_resetCloudUserTasks(\'' + u.id + '\',\'' + escHtml(label) + '\')">Reset Tasks</button>' +
+          '<button class="btn btn-danger" style="padding:4px 10px;font-size:.72rem" onclick="_removeCloudUser(\'' + u.id + '\',\'' + escHtml(label) + '\')">Remove</button></div></td></tr>';
       }).join("");
     }
   }
