@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { DM_Sans } from "next/font/google";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { logout } from "@/lib/auth";
 import { subscribeUsers, subscribeContacts } from "@/lib/db";
 import { authHeader } from "@/lib/authHeader";
-import { type AppUser, type Contact } from "@/types";
+import { type AppUser, type Contact } from "@/lib/db";
 
 const dmSans = DM_Sans({ subsets: ["latin"] });
 
