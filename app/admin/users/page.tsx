@@ -257,7 +257,7 @@ export default function AdminUsersPage() {
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f111a] p-6 shadow-2xl">
               <h3 className="text-base font-bold text-white tracking-tight">Reset tasks to pool?</h3>
               <p className="mt-2 text-sm text-gray-400 leading-relaxed">
-                This will return all tasks assigned to{" "}
+                This will return only pending tasks assigned to{" "}
                 <span className="font-semibold text-white">
                   {pendingReset.name || pendingReset.email}
                 </span>{" "}
